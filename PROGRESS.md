@@ -45,12 +45,29 @@ nanoGPT 实战主线：2 / 7 里程碑（M1 KQV ✅ + M2 Embedding ✅）
 
 ## 🔜 下次上课内容
 
-### 第 11 课：组装成类 + Transformer Block
-- **第一步**（工程重构，无新知识点）：把散装变量包进 `nn.Module` 类，为堆叠多层做准备
-- **第二步**（新知识点）：Transformer Block = attention + MLP + LayerNorm + 残差连接
-  - nanoGPT 对应：`model.py` 的 `Block` 类
-  - 产出：`lesson12_block.py`——一个完整工序
-- 备选：第 11 课 RNN 痛点（讲动机），可视情况补
+### 第 11 课进行中：Transformer Block 三零件
+已学 2/3 零件（代码已加进 lesson09_attention.py）：
+- ✅ **残差连接**：`output = output + x_base`（输入直接加输出，给梯度抄近路）
+  - 踩坑：残差加的是**原始输入**，不是 LayerNorm 后的值。学生用 `x_base = x` 保存原始值（可行）；官方一行写法 `x = x + attn(ln(x))` 更不易错
+- ✅ **LayerNorm**：`ln1 = nn.LayerNorm(768)`，放在 attention **之前**（Pre-LN），对 768 维 token 向量做
+  - 踩坑：维度必须对（768 对 768，不能对 score 的 5）；不能覆盖原始 x，要用新变量 `x_norm` 或官方写法
+- 🔜 **MLP**：第三个零件，还没讲。讲完 Block 就齐了
+
+### 下次上课流程
+1. 讲 MLP（多层感知机：768→3072→768，先扩张再压缩 + GELU 激活）
+2. 把 MLP 加进代码（attention 之后，带自己的残差 `x = x + mlp(ln2(x))`）
+3.（可选）把散装代码包成 `nn.Module` 类，为堆叠多层做准备
+4. 然后进第 12 课：堆叠多层 Block = 完整 GPT
+
+### Block 完整结构（目标）
+```
+x ──→ ln1 ──→ attention ──→ + ──→ x1
+ │                           │
+ └────────残差───────────────┘
+     x1 ──→ ln2 ──→ MLP ──→ + ──→ x2
+      │                     │
+      └────────残差─────────┘
+```
 
 ## 🧠 待回收思考题
 
