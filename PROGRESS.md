@@ -1,20 +1,20 @@
 # 学习进度
 
-> **下次上课从这里继续。** 最后更新：2026-08-02
+> **下次上课从这里继续。** 最后更新：2026-08-04
 
 ## 📍 当前位置
 
-- **已完成**：第 1-7 课（模块一全部 + 模块二前 3 课）+ 第 9 课（nanoGPT 实战主线首课）
-- **进行中**：第 9 课已写完核心代码，剩 causal mask 收尾 + 思考题 9-1 待答
-- **下次上课**：第 9 课收尾（causal mask，引出 GPT vs BERT）或直接进第 10 课 Embedding
+- **已完成**：第 1-7 课（基础）+ 第 9 课（KQV）+ 第 10 课（Embedding + 位置编码）
+- **进行中**：第 9-10 课代码已完成并验证跑通
+- **下次上课**：第 11 课——把散装代码包成 `nn.Module` 类，然后进 Transformer Block（MLP/LN/残差）
 
 ## 📊 进度仪表盘
 
 ```
-nanoGPT 实战主线：1 / 7 里程碑（M1 KQV ✅）
-[█░░░░░░] 14%
+nanoGPT 实战主线：2 / 7 里程碑（M1 KQV ✅ + M2 Embedding ✅）
+[██░░░░░] 28%
 
-整体课程：第 9 / 15 课进行中
+整体课程：第 10 / 15 课完成，下次进第 11 课
 ```
 
 ## ✅ 已完成课程
@@ -31,22 +31,26 @@ nanoGPT 实战主线：1 / 7 里程碑（M1 KQV ✅）
 （第 8 课手写数字识别实战进行中，PyTorch 基础已掌握：nn.Module、训练循环、optimizer，跑通 97.4%）
 
 ### nanoGPT 实战主线
-9. ✅ **KQV / Self-Attention**（2026-08-02）
+9. ✅ **KQV / Self-Attention**（2026-08-02，2026-08-04 补 mask）
    - 代码：`lesson09_attention.py`（学生从 0 手写）
-   - 核心概念：Query/Key/Value 三顶帽子、切头、scaled attention、softmax、拼头、W_o 输出投影
+   - 核心概念：Query/Key/Value 三顶帽子、切头、scaled attention、causal mask、softmax、拼头、W_o 输出投影
    - 关键产出：能跑通完整 self-attention 前向，与官方 model.py 逻辑一致
+   - 2026-08-04 补：causal mask（下三角挡未来），从 BERT 式升级成 GPT 式
+
+10. ✅ **Embedding + 位置编码**（2026-08-04）
+    - 代码：`lesson09_attention.py`（学生把 embedding 接进同一文件，未单独建 lesson10）
+    - 核心概念：token embedding（字符查表）、position embedding（位置查表）、相加融合
+    - 关键点：第 9 课把 embedding 当黑盒，这里拆开；彻底参数化（零硬编码维度，抽出 tokens_size/heads_num/batches_num/tokens_num）
+    - 关键产出：输入从随机数变成真实 embedding，跑通 [1,5,768] 输出
 
 ## 🔜 下次上课内容
 
-### 第 9 课收尾（causal mask）—— 推荐先做
-- 加 causal mask：`att.masked_fill(...==0, float('-inf'))`
-- 引出 **GPT vs BERT 本质区别**：GPT 加 mask（只看左边，能生成）；BERT 不加（双向看，只能理解）
-- 这样把 attention 从"BERT 式"改成"GPT 式"，为后面生成任务铺路
-
-### 然后第 10 课：Embedding + 位置编码
-- nanoGPT 对应：`model.py` 的 `wte`（token embedding）/ `wpe`（position embedding）
-- 产出：`lesson10_embedding.py`——把字符变向量喂给 attention
-- 关键点：第 9 课把 embedding 当黑盒，这里拆开
+### 第 11 课：组装成类 + Transformer Block
+- **第一步**（工程重构，无新知识点）：把散装变量包进 `nn.Module` 类，为堆叠多层做准备
+- **第二步**（新知识点）：Transformer Block = attention + MLP + LayerNorm + 残差连接
+  - nanoGPT 对应：`model.py` 的 `Block` 类
+  - 产出：`lesson12_block.py`——一个完整工序
+- 备选：第 11 课 RNN 痛点（讲动机），可视情况补
 
 ## 🧠 待回收思考题
 
@@ -86,7 +90,19 @@ nanoGPT 实战主线：1 / 7 里程碑（M1 KQV ✅）
 - 张量维度：`[batch, seq, dim]` 三维，`nn.Linear` 只看最后一维
 - 768 必须能被头数整除（768÷12=64）
 - `transpose` 后内存不连续，`view` 会报错，加 `.contiguous()`
-- **未加 causal mask**，当前是 BERT 式（双向），下节课补
+- causal mask 必须在 softmax **之前**加（否则比例不对）
+- `tokens_size` 和 `tokens_num` 命名太像易混（官方用 `n_embd`/`T` 区分）
+
+## 📝 第 10 课详细回顾（供复习）
+
+### 学到的核心
+1. **Token embedding**：每个字符 → 768 维向量，靠 `nn.Embedding(65, 768)` 查表。表里 5 万个数随机初始化、训练学
+2. **Position embedding**：每个位置 → 768 维向量，`nn.Embedding(1024, 768)`。解决 Transformer 本身没有位置感、分不清"猫追狗/狗追猫"的问题
+3. **相加而非拼接**：内容向量 + 位置向量 直接相加，不增维度（拼接会 768→1536，后面全得改）
+4. **参数化**：把所有硬编码维度抽成变量（tokens_size/heads_num/batches_num/tokens_num），换超参只改开头几行
+
+### 为什么需要位置编码（关键理解）
+attention 计算 `score[i][j] = q[i]·k[j]` 只用内容、不用位置 → 同样字符不同顺序算出 score 一样 → 必须额外注入位置信息
 
 ## 🗺️ 完整里程碑路线图（与 Haiku 讨论定稿）
 
