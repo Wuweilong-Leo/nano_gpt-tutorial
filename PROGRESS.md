@@ -45,21 +45,30 @@ nanoGPT 实战主线：2 / 7 里程碑（M1 KQV ✅ + M2 Embedding ✅）
 
 ## 🔜 下次上课内容
 
-### 第 11 课进行中：Transformer Block 三零件
-已学 2/3 零件（代码已加进 lesson09_attention.py）：
-- ✅ **残差连接**：`output = output + x_base`（输入直接加输出，给梯度抄近路）
-  - 踩坑：残差加的是**原始输入**，不是 LayerNorm 后的值。学生用 `x_base = x` 保存原始值（可行）；官方一行写法 `x = x + attn(ln(x))` 更不易错
-- ✅ **LayerNorm**：`ln1 = nn.LayerNorm(768)`，放在 attention **之前**（Pre-LN），对 768 维 token 向量做
-  - 踩坑：维度必须对（768 对 768，不能对 score 的 5）；不能覆盖原始 x，要用新变量 `x_norm` 或官方写法
-- 🔜 **MLP**：第三个零件，还没讲。讲完 Block 就齐了
+### 第 11 课：Transformer Block —— 代码已大幅跃进
+学生在别的 AI 学了大量内容，代码从"散装 attention"直接跳到**完整可训练 GPT**（lesson09_attention.py）。已掌握的知识点（学生在代码里写了详细注释，理解到位）：
+- ✅ Block 类：attention + MLP + 2×LayerNorm + 2×残差
+- ✅ MLP：`mlp_fc(hidden→4×hidden) → GELU → mlp_proj(4×hidden→hidden)`，先扩张4倍再压缩，GELU"去线性化"
+- ✅ 6 层 Block 堆叠
+- ✅ lm_head（hidden→vocab）+ cross_entropy loss + Adam optimizer + 训练循环
+- ✅ 字符级 tokenizer（stoi/itos）
+- ✅ x 形状 `[batch, seq, hidden]` 由 idxs 决定（前两维照搬 idxs，第三维来自 wte 定义）
+- ✅ `@` = 矩阵乘法 = 一堆点乘（相乘后求和，消掉中间维）
+- ✅ scaled attention：除以 √head_dim（不是 √hidden_size），因为 64 项相加数值撑大 √64 倍
+
+### ⚠️ 学生标记"还不懂、先记下来"的点
+**LayerNorm 的位置——什么时候要归一化？**
+- 老师讲了口诀：**"要变换（attn/mlp/lm_head）→ 先归一化；只搬运（残差/相加）→ 不归一化"**
+- 代码里有 3 处 LN：ln1(attn前)、ln2(mlp前)、ln_f(最后输出前)
+- Pre-LN 结构（变换之前归一化），现代大模型都用这个
+- **学生表示还没完全消化，下次需要再讲/举例巩固**。可以画图对比"加 LN vs 不加 LN"的训练曲线差异
 
 ### 下次上课流程
-1. 讲 MLP（多层感知机：768→3072→768，先扩张再压缩 + GELU 激活）
-2. 把 MLP 加进代码（attention 之后，带自己的残差 `x = x + mlp(ln2(x))`）
-3.（可选）把散装代码包成 `nn.Module` 类，为堆叠多层做准备
-4. 然后进第 12 课：堆叠多层 Block = 完整 GPT
+1. 先回顾 LayerNorm 位置这个待消化点（用实验或图示巩固）
+2. 加**生成功能**（sample）——代码现在只训练没生成，让模型真正"吐字"，最有成就感的 wow 时刻
+3. 接完整莎士比亚数据（但要训练需考虑 GPU，见下方 GPU 踩坑）
 
-### Block 完整结构（目标）
+### Block 完整结构（学生已实现）
 ```
 x ──→ ln1 ──→ attention ──→ + ──→ x1
  │                           │
@@ -68,6 +77,44 @@ x ──→ ln1 ──→ attention ──→ + ──→ x1
       │                     │
       └────────残差─────────┘
 ```
+
+## 🖥️ GPU 配置踩坑（2026-08-04）
+
+机器有 **RTX 5080（16GB，Blackwell sm_120）**，但当前环境用不上 GPU：
+- `torch.cuda.is_available()` = False（装的是 CPU 版 torch 2.13.0+cpu）
+- **根因**：Python 3.14 + RTX 5080 都是最新，常规源（pytorch.org cu128、清华源）**没有 py3.14 的 GPU 版 torch 包**
+- 尝试过：pytorch.org cu128（国内下载极慢卡住）、清华源 cu128（无 py3.14 包）
+
+### 后续要上 GPU 的方案（等需要训练大数据时再做）
+1. **PyTorch nightly**（支持新架构/新 Python 更早）：`pip install --pre torch --index-url https://download.pytorch.org/whl/nightly/cu128`
+2. **降级 Python 到 3.12/3.13**（最稳妥，新建 venv）
+3. **云 GPU**（Colab/Kaggle 免费 T4）
+
+### 当前策略
+- **先用 CPU 继续学知识点**（attention/embedding/block 等概念，CPU 跑小数据完全够）
+- 训练数据用一句话（60字符）验证代码能跑通即可，loss 秒降是过拟合（数据太小，正常）
+- 等要上完整莎士比亚 100万字符训练时，再花时间配 GPU
+
+## 📝 第 11 课重大进展（2026-08-04）
+
+学生在别的 AI 学了大量内容，代码从"散装 attention"跃进到**完整可训练 GPT**：
+- ✅ Block 类（含 attention + MLP + 2×LayerNorm + 2×残差）
+- ✅ MLP：`mlp_fc(768→3072) → GELU → mlp_proj(3072→768)`（先扩张4倍再压缩回来）
+- ✅ 6 层 Block 堆叠
+- ✅ lm_head（hidden→vocab）+ cross_entropy loss
+- ✅ Adam optimizer + 训练循环
+- ✅ 字符级 tokenizer（stoi/itos）
+
+### 修复的 bug
+1. `torch.tril(..., -1)` → 去掉 `-1`（对角线必须保留，token 要能看自己）
+2. 训练循环缩进：`ln_f/lm_head/loss/optimizer` 退出 `for b in blocks`（原来每个 block 都重复算一次）
+3. **reshape 顺序**：`q.reshape(bs, head_num, tokens_num, -1)` ❌ → `q.reshape(bs, tokens_num, head_num, -1)` ✅
+   - head 维度必须在 token 维度**之后**，否则 1024 维切错位，数据全乱（报错还很误导）
+
+### 验证结果
+- 代码能跑通，loss 从 3.52 → 0.0001（100步）
+- ⚠️ loss 降太快 = 过拟合（数据就一句话60字符，模型死背），不是 bug
+- 换完整莎士比亚数据 loss 会正常降到 1.x
 
 ## 🧠 待回收思考题
 
