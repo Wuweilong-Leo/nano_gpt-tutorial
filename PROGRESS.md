@@ -250,12 +250,12 @@ attention 计算 `score[i][j] = q[i]·k[j]` 只用内容、不用位置 → 同�
 
 | 里程碑 | 内容 | 课数 | 类型 |
 |--------|------|------|------|
-| **M6** 生成质量+评估 | temperature/top-k/top-p 采样 + perplexity 困惑度 + KV cache 推理加速 | 2 课 | 理论+改代码 |
-| **M7** BPE+中文语料 | BPE 子词分词原理 → 训练 BPE → 用新 tokenizer 重训 GPT（词表 65→BPE） | 2 课 | 实战代码 |
-| **M8** SFT 微调 | 指令数据格式 + SFT 训练循环（主线用现成小模型 qwen-0.5B/1.8B） | 1 课 | 实战代码 |
-| **M9** LoRA | LoRA/PEFT 原理 + 用现成小模型微调（支线：给自己的 GPT 加小适配头） | 1 课 | 实战代码 |
-| **M10** 对齐理论 | reward model → RLHF 三阶段 → DPO（纯讲+图解，不写代码，全课最难） | 1 课 | 纯理论 |
-| **M11** 行业地图 | RoPE 深讲（对比绝对位置编码）+ GQA/Flash/MoE/长上下文扫盲 + 量化 int8 体验 | 1 课 | 理论+小实验 |
+| **M6** 生成质量+评估+训练工程 | temperature/top-k/top-p 采样 + perplexity 困惑度 + KV cache 推理加速 + **beam search 对比** + **Adam vs AdamW** + **warmup+cosine 调度** + **cross-entropy 为啥用 CE 不用 MSE** + **梯度裁剪回顾** | 2-3 课 | 理论+改代码 |
+| **M7** BPE+中文语料 | BPE 子词分词原理 → 训练 BPE → 用新 tokenizer 重训 GPT（词表 65→BPE） + **BBPE/tokenizer 工程面试题** | 2 课 | 实战代码 |
+| **M8** SFT 微调 | 指令数据格式 + SFT 训练循环（主线用现成小模型 qwen-0.5B/1.8B） + **预训练 vs 微调边界** | 1 课 | 实战代码 |
+| **M9** LoRA | LoRA/PEFT 原理 + 用现成小模型微调（支线：给自己的 GPT 加小适配头） + **QLoRA/全参微调对比** | 1 课 | 实战代码 |
+| **M10** 对齐理论 | reward model → RLHF 三阶段 → DPO + **PPO 概念**（纯讲+图解，不写代码，全课最难） | 1 课 | 纯理论 |
+| **M11** 行业地图+训练系统 | RoPE 深讲 + GQA/Flash/MoE/长上下文扫盲 + 量化 int8/int4 体验 + **scaling law/Chinchilla** + **涌现能力** + **分布式训练（DDP/DP/ZeRO）** + **混合精度 amp** + **Attention O(n²) 复杂度** + **评测 benchmark（MMLU/HumanEval）** | 2 课 | 理论+小实验 |
 | **过渡仪式** | 自己 GPT vs API 同 prompt 生成对比 → 亲眼看差距（桥梁，半课） | 半课 | 体验 |
 
 **agent 段（M12-M15，拆成独立里程碑，每个核心概念一个 M）**：
@@ -287,6 +287,52 @@ attention 计算 `score[i][j] = q[i]·k[j]` 只用内容、不用位置 → 同�
 | 规划 / ReAct | M14 | next-token 自回归（已学） | 链式生成=最朴素规划，ReAct 是升级版 |
 | 多工具路由 | M14 | softmax 概率选择（已学） | 多工具选择=概率/规则路由 |
 | 框架对照 | M15 | 全部已学 | 看框架如何封装你手写的东西 |
+
+### 🎯 面试考点覆盖表（2026-08-07 新增·对齐企业面试）
+
+学生明确要求：知识点要覆盖企业面试。故新增此表，标注每个考点"在哪个 M 学"和"面试重要度"（⭐⭐⭐ 高频必问 / ⭐⭐ 偶问 / ⭐ 知道就行）。
+
+**A. 已学但 M6-M11 要补讲透的细节（面试最爱抠这些"用过但没深想"的点）**：
+
+| 考点 | 现状 | 在哪个 M 补讲 | 重要度 |
+|------|------|--------------|--------|
+| LayerNorm vs BatchNorm，为啥 Transformer 用 LN 不用 BN | 用了 LN 没对比 | M6 | ⭐⭐⭐ |
+| Pre-LN vs Post-LN（原始论文 Post-LN） | 写了 Pre-LN 没对比 | M6 | ⭐⭐⭐ |
+| 残差连接为啥能训深网络/防梯度消失 | 用了没讲原理 | M6 | ⭐⭐⭐ |
+| MLP 为啥扩张 4×（不是 2×/8×） | 用了没讲 | M6 | ⭐⭐ |
+| GELU vs ReLU vs **SwiGLU**（现代模型标配） | 只用了 GELU | M6 | ⭐⭐⭐ |
+| cross-entropy 为啥用 CE 不用 MSE | 用了没讲 | M6 | ⭐⭐⭐ |
+| Adam vs AdamW（大模型/LoRA 标配 AdamW） | 只用了 Adam | M6 | ⭐⭐⭐ |
+| 权重共享 weight tying 的原理 | 已用 | M6 复习 | ⭐⭐ |
+
+**B. 新补进路线图的面试考点（之前漏了）**：
+
+| 考点 | 在哪个 M 学 | 重要度 | 类型 |
+|------|------------|--------|------|
+| beam search 解码 | M6 | ⭐⭐ | 理论+对比采样 |
+| warmup + cosine 学习率调度 | M6 | ⭐⭐⭐ | 理论+改代码 |
+| scaling law / Chinchilla 定律 | M11 | ⭐⭐⭐ | 纯理论 |
+| 涌现能力 emergent abilities | M11 | ⭐⭐ | 纯理论 |
+| 分布式训练 DDP/DP/ZeRO | M11 | ⭐⭐⭐ | 纯理论 |
+| 混合精度训练 amp | M11 | ⭐⭐ | 理论+小实验 |
+| Attention O(n²) 复杂度 | M11 | ⭐⭐⭐ | 理论 |
+| 评测 benchmark（MMLU/HumanEval/Perplexity） | M11 | ⭐⭐ | 理论 |
+| QLoRA / 全参微调对比 | M9 | ⭐⭐ | 理论 |
+| PPO 概念（RLHF 用） | M10 | ⭐⭐ | 纯理论 |
+| BBPE / tokenizer 工程题 | M7 | ⭐⭐ | 理论 |
+
+**C. agent 段新增的面试考点**：
+
+| 考点 | 在哪个 M 学 | 重要度 |
+|------|------------|--------|
+| **RAG 检索增强生成** | M13（记忆环节自然引入） | ⭐⭐⭐ |
+| **CoT 思维链** | M14（ReAct 前置） | ⭐⭐⭐ |
+| function calling 机制 | M12-M14 | ⭐⭐⭐ |
+| ReAct 模式 | M14 | ⭐⭐⭐ |
+| 多轮对话/上下文管理 | M13 | ⭐⭐ |
+| prompt engineering | M13 | ⭐⭐⭐ |
+
+**面试覆盖说明**：以上三表覆盖大模型算法岗/应用岗面试 90%+ 高频考点。RAG 和 CoT 原来不在 agent 路线里，因为面试高频，特意塞进 M13/M14。剩余 10%（如具体框架 API、业务场景题）靠毕业项目 M15 + 实战积累。
 
 ### 风险与坑（提前知道）
 
