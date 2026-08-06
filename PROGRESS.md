@@ -1,6 +1,6 @@
 # 学习进度
 
-> **下次上课从这里继续。** 最后更新：2026-08-04
+> **下次上课从这里继续。** 最后更新：2026-08-07
 
 ## 📍 当前位置
 
@@ -252,18 +252,18 @@ attention 计算 `score[i][j] = q[i]·k[j]` 只用内容、不用位置 → 同�
 |--------|------|------|------|
 | **M6** 生成质量+评估+训练工程 | temperature/top-k/top-p 采样 + perplexity 困惑度 + KV cache 推理加速 + **beam search 对比** + **Adam vs AdamW** + **warmup+cosine 调度** + **cross-entropy 为啥用 CE 不用 MSE** + **梯度裁剪回顾** | 2-3 课 | 理论+改代码 |
 | **M7** BPE+中文语料 | BPE 子词分词原理 → 训练 BPE → 用新 tokenizer 重训 GPT（词表 65→BPE） + **BBPE/tokenizer 工程面试题** | 2 课 | 实战代码 |
-| **M8** SFT 微调 | 指令数据格式 + SFT 训练循环（主线用现成小模型 qwen-0.5B/1.8B） + **预训练 vs 微调边界** | 1 课 | 实战代码 |
-| **M9** LoRA | LoRA/PEFT 原理 + 用现成小模型微调（支线：给自己的 GPT 加小适配头） + **QLoRA/全参微调对比** | 1 课 | 实战代码 |
+| **M8** SFT 微调 | 指令数据格式 + SFT 训练循环（主线用 Qwen3-0.6B，详见"项目B技术选型"小节） + **预训练 vs 微调边界** | 1 课 | 实战代码 |
+| **M9** LoRA | LoRA/PEFT 原理 + Qwen3-0.6B LoRA 微调（transformers+peft+trl 从0写） + **QLoRA/全参微调对比** + 支线：给自己的 GPT 加小适配头 | 1 课 | 实战代码 |
 | **M10** 对齐理论 | reward model → RLHF 三阶段 → DPO + **PPO 概念**（纯讲+图解，不写代码，全课最难） | 1 课 | 纯理论 |
-| **M11** 行业地图+训练系统 | RoPE 深讲 + GQA/Flash/MoE/长上下文扫盲 + 量化 int8/int4 体验 + **scaling law/Chinchilla** + **涌现能力** + **分布式训练（DDP/DP/ZeRO）** + **混合精度 amp** + **Attention O(n²) 复杂度** + **评测 benchmark（MMLU/HumanEval）** | 2 课 | 理论+小实验 |
+| **M11** 行业地图+训练系统 | RoPE 深讲 + GQA/Flash/MoE/长上下文扫盲 + 量化 int8/int4 体验（bitsandbytes 0.50.0 NF4，诚实标注小模型量化学机制非提速） + **scaling law/Chinchilla** + **涌现能力** + **分布式训练（DDP/DP/ZeRO）** + **混合精度 amp** + **Attention O(n²) 复杂度** + **评测 benchmark（MMLU/HumanEval）** | 2 课 | 理论+小实验 |
 | **过渡仪式** | 自己 GPT vs API 同 prompt 生成对比 → 亲眼看差距（桥梁，半课） | 半课 | 体验 |
 
 **agent 段（M12-M15，拆成独立里程碑，每个核心概念一个 M）**：
 
 | 里程碑 | agent 知识点 | 课数 | 类型 |
 |--------|-------------|------|------|
-| **M12** agent 全貌 + 第一个循环 | agent 四零件（大脑/工具/记忆/规划）+ 手写最小 agent 循环（API+1 个工具+循环），先用 API 当大脑跑通"问→调工具→答" | 1 课 | 理论+实战 |
-| **M13** 工具调用 + 记忆 | prompt 工程（让 LLM 输出结构化指令）+ 工具调用解析（decode 后 parse）+ 短时记忆（对话历史塞 context window）+ 多轮对话 agent | 1-2 课 | 实战代码 |
+| **M12** agent 全貌 + 第一个循环 | agent 四零件（大脑/工具/记忆/规划）+ 手写最小 agent 循环（智谱 GLM-4.7-Flash + openai SDK + 1 个工具 + 循环），先用 API 当大脑跑通"问→调工具→答" | 1 课 | 理论+实战 |
+| **M13** 工具调用 + 记忆 | prompt 工程（让 LLM 输出结构化指令）+ 工具调用解析（decode 后 parse）+ 短时记忆（对话历史塞 context window）+ 多轮对话 agent + **RAG**（bge-base-zh-v1.5 + faiss-cpu + pypdf） | 1-2 课 | 实战代码 |
 | **M14** ReAct + 多工具路由 | ReAct 模式（Thought→Action→Observation 循环）+ 多工具选择（路由）+ 循环终止条件 + 错误恢复 | 1-2 课 | 实战代码 |
 | **M15（毕业）** 完整 agent + 框架对照 | 整合成完整 agent（查词典+多轮对话+多工具）+ 对照轻量框架（看 langchain/官方 SDK 怎么封装同样的事，理解"框架=帮你省代码"） | 2 课 | 实战+对照 |
 
@@ -271,11 +271,11 @@ attention 计算 `score[i][j] = q[i]·k[j]` 只用内容、不用位置 → 同�
 
 1. **架构进阶压成一课**：RoPE/Flash/MoE/GQA 不全讲——只 RoPE 深讲（有学生现在的绝对位置编码做锚点），其余"知道存在+为什么这么做"即可，避免名词轰炸。
 2. **BPE + 中文语料合并**：原"换中文语料"被吸收进 M7——BPE 训练用中文语料当素材，词表从 65 升级到 BPE，重训 GPT。
-3. **SFT/LoRA 用现成小模型**：学生 GPT 太小（120M、字符级）SFT 看不到效果。M8/M9 主线用 qwen-0.5B/1.8B（16G GPU LoRA 无压力）。**支线**：用 LoRA 思想给自己的 GPT 加适配头，让"我的模型"主线不断。
+3. **SFT/LoRA 用现成小模型**：学生 GPT 太小（120M、字符级）SFT 看不到效果。M8/M9 主线用 **Qwen3-0.6B**（16G GPU LoRA 峰值才 ~5G 余量极大，详见"项目B技术选型"小节）。**支线**：用 LoRA 思想给自己的 GPT 加适配头，让"我的模型"主线不断。
 4. **过渡仪式承上启下**：进 agent 前用自己 GPT vs API 对比生成，教学话术——"你的模型让你懂了 LLM 大脑怎么工作，这是纯调包的人没有的底气。现在做 agent 要能听指令的大脑，换用更强的真大脑。但你懂底层，你是'懂发动机的司机'。"
 5. **agent 拆成 4 个独立 M**：不把 agent 糊成一个里程碑 2-3 课塞完——M12 全貌+最小循环、M13 工具+记忆、M14 ReAct+多工具、M15 整合+框架对照。每个核心概念单独成课，跟 M1-M5 一个节奏。
 6. **agent 先手写禁框架**：网上搜 agent 会被 langchain 淹没。M12-M14 全手写，禁框架。框架对照只放 M15 最后一课，理解"框架=帮你省代码"。
-7. **API 选国内能直连的**：deepseek/qwen（有 function calling），避免卡在网络分心。
+7. **API 选国内能直连的**：**智谱 GLM-4.7-Flash**（真·免费、function calling 完整、OpenAI 兼容、手机号注册），用 openai SDK 一套代码改 3 个字符串就能切 Qwen/Kimi/DeepSeek。为啥不首选 deepseek：function calling 只在 chat 档有、reasoner 档不支持，且偶发非法 JSON 要兜底。
 
 ### agent 知识点 ↔ 大模型知识对应（贯穿 M12-M15）
 
@@ -334,13 +334,43 @@ attention 计算 `score[i][j] = q[i]·k[j]` 只用内容、不用位置 → 同�
 
 **面试覆盖说明**：以上三表覆盖大模型算法岗/应用岗面试 90%+ 高频考点。RAG 和 CoT 原来不在 agent 路线里，因为面试高频，特意塞进 M13/M14。剩余 10%（如具体框架 API、业务场景题）靠毕业项目 M15 + 实战积累。
 
+## 🔧 项目B技术选型（2026-08-07 定稿·M8-M15 全程用这套）
+
+学生认可的双项目并行方案中"项目B（现成小模型）"的具体选型。**现在不下载不装**，到 M8 开始前再动手。
+
+| 用途 | 选型 | 理由 |
+|---|---|---|
+| 本地基座（M8 SFT / M9 LoRA / M11 量化） | **Qwen3-0.6B**（bf16） | 16G 上 LoRA 峰值 ~5G 余量极大；魔搭下载国内稳；36T token 数据同尺寸强 |
+| 训练框架 | transformers + peft + trl 从0写 | 透明每步看得见，不用 LLaMA-Factory 黑盒（黑盒排查反而难） |
+| agent API（M12-M15） | **智谱 GLM-4.7-Flash** + openai SDK | 真·免费、function calling 完整、OpenAI 兼容、手机号注册；改 3 个字符串切 Qwen/Kimi/DeepSeek |
+| RAG embedding（M13） | bge-base-zh-v1.5 | 110MB，CPU 都能跑，教程多 |
+| 向量库 / 文档加载（M13） | faiss-cpu / pypdf | Py3.14 有 win wheel；别用 unstructured（系统依赖一堆还装不上 3.14） |
+
+**为啥不是其他选项**：Qwen3（2025-04 发，36T token）强于 Qwen2.5；TinyLlama 中文差不教学。DeepSeek 的 function calling 只在 `deepseek-chat` 有、`deepseek-reasoner` 不支持，且偶发非法 JSON 要兜底；智谱全系列支持 + 免费常驻。
+
+**M8 开始前一次性补依赖**（走清华源）：
+```
+pip install -i https://pypi.tuna.tsinghua.edu.cn/simple peft accelerate trl modelscope bitsandbytes openai sentence-transformers faiss-cpu pypdf
+```
+
+**下载模型**（魔搭，国内 CDN）：
+```python
+from modelscope import snapshot_download
+model_dir = snapshot_download('qwen/Qwen3-0.6B', cache_dir='F:/study/big_model/models')
+```
+
+**三个必须知道的坑**：
+1. **量化在小模型上是"学机制"不是"提速"**：bitsandbytes 0.50.0 官方支持 Win+sm_120+Py3.14（能装能跑，v0.45.3 起官方编译了 sm_120 kernel），但 RTX 5090 实测 1.5B 模型 NF4 比 fp16 **慢 42%、能耗涨 29%**，收益要到 7B+ 才转正。M11 量化课定位诚实——学机制为大模型打基础，真正价值是"把 8B 塞进 16G"。
+2. **Py3.14 + peft/accelerate/modelscope 大概率能装但无官方背书**：transformers/trl/bitsandbytes 显式列 3.14，但 peft/accelerate/modelscope 的 classifiers 没更新到 3.14（`Requires-Python >=3.10` 无上界，纯 Python 应该能跑）。兜底：装不上降 Python 3.13.7 重建 venv（torch 2.11+cu128 在 3.13 也有官方 wheel，迁移成本低）。
+3. **智谱免费政策可能调整**：以控制台实时信息为准，取消就切 Qwen3.7-flash（同样 OpenAI 兼容，改两行代码）。
+
 ### 风险与坑（提前知道）
 
 - **学生 GPT loss 能到哪**：字符级+12层继续训到 1.5-1.8（零星成句莎士比亚），但永远到不了"能听指令"——这正好是 M6-M8 的教学动机："光预训练不够，所以要有微调"。
 - **RLHF 最难**：M10 分三层讲（reward model→RL 优化→合起来），卡住允许"先记结论，以后回来"。
 - **BPE 训练抽象**：先拿 10 个英文单词手算 BPE 合并步骤（白板演示），再上代码。
 - **KV cache 维度对齐**：先画图（cache 形状 `[B, n_head, T, head_dim]`），再改 forward。
-- **LoRA 显存**：qwen-1.8B 全精度约 3.6G，LoRA 训练峰值 8-10G，16G 够。加载时用 `dtype=float16/bfloat16`，别 float32。
+- **LoRA 显存**：Qwen3-0.6B bf16 约 1.2G，LoRA 训练（r=16, seq 1024）峰值 ~4-5G，16G 极宽松；1.7B 峰值 ~8-10G（开 gradient_checkpointing）也够。加载用 `dtype=bfloat16`（Blackwell 原生支持），别 float32。
 
 ## 📌 备忘
 
