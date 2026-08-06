@@ -122,14 +122,14 @@ val_data = data[n:]
 scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max = 10000)
 
 # 训练
-for step in range(100000):
+for step in range(10000):
     ix = torch.randint(len(train_data) - BLOCK_SIZE, size=(1,))
     idx = torch.tensor(train_data[ix:ix + BLOCK_SIZE]).unsqueeze(0).to(DEVICE)
     targets = torch.tensor(train_data[ix+1:ix + BLOCK_SIZE+1]).unsqueeze(0).to(DEVICE)
     logits, loss = model(idx, targets)
     optimizer.zero_grad()
     loss.backward()
-    torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+    torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0) # 防止梯度爆炸，梯度和如果高于1，就等比例缩小
     optimizer.step()
     scheduler.step()
     if step % 10 == 0:
