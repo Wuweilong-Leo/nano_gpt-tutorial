@@ -79,23 +79,23 @@ class Block(torch.nn.Module):
 
         return output
 
-device = 'cuda' if torch.cuda.is_available() else 'cpu'
-print(f'using device: {device}')
+DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
+print(f'using device: {DEVICE}')
 
 class GPT(torch.nn.Module):
     def __init__(self, vocab_size, block_size, hidden_size, n_head, n_layers):
         super().__init__()
-        self.wte = torch.nn.Embedding(vocab_size, hidden_size).to(device)
-        self.wpe = torch.nn.Embedding(block_size, hidden_size).to(device)
-        self.blocks = torch.nn.ModuleList([Block(hidden_size, n_head).to(device) for _ in range(n_layers)])
-        self.ln_f = torch.nn.LayerNorm(hidden_size).to(device)
-        self.lm_head = torch.nn.Linear(hidden_size, vocab_size).to(device)
+        self.wte = torch.nn.Embedding(vocab_size, hidden_size).to(DEVICE)
+        self.wpe = torch.nn.Embedding(block_size, hidden_size).to(DEVICE)
+        self.blocks = torch.nn.ModuleList([Block(hidden_size, n_head).to(DEVICE) for _ in range(n_layers)])
+        self.ln_f = torch.nn.LayerNorm(hidden_size).to(DEVICE)
+        self.lm_head = torch.nn.Linear(hidden_size, vocab_size).to(DEVICE)
         self.lm_head.weight = self.wte.weight # weight type, 单位长度下向量点积越大，相似读越高
         self.vocab_size = vocab_size
 
     def forward(self, idx, targets = None):
         B, T = idx.shape[0], idx.shape[1]
-        pos = torch.arange(T).unsqueeze(0).to(device) # (1, T)：靠广播对齐 batch 维
+        pos = torch.arange(T).unsqueeze(0).to(DEVICE) # (1, T)：靠广播对齐 batch 维
         x = self.wte(idx) + self.wpe(pos)
         for b in self.blocks:
             x = b(x)
@@ -108,13 +108,13 @@ class GPT(torch.nn.Module):
 
 with open(r"F:\study\big_model\nanoGPT\data\shakespeare_char\input.txt", "r") as f:
     text = f.read()
-block_size = 128
+BLOCK_SIZE = 128
 chars = sorted(set(text))
-vocab_size = len(chars)
-model = GPT(vocab_size, block_size, hidden_size=1024, n_head=16, n_layers=12)
+VOCAB_SIZE = len(chars)
+model = GPT(VOCAB_SIZE, BLOCK_SIZE, hidden_size=1024, n_head=16, n_layers=12)
 optimizer = torch.optim.Adam(model.parameters(), lr=3e-4)
 stoi = {c: i for i, c in enumerate(chars)} # 形成字典 字符-》索引
-itos = {i: c for i, c in stoi.items()} # 形成字典，索引=》字符
+itos = {i: c for c, i in stoi.items()} # 形成字典，索引=》字符（注意 stoi 是 字符→索引，反转时解包成 c, i）
 data = [stoi[c] for c in text] # 对于字符串里的每个字符形成索引
 n = int (0.9 * len(data))
 train_data = data[:n]
@@ -123,9 +123,9 @@ scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max = 10000)
 
 # 训练
 for step in range(100000):
-    ix = torch.randint(len(train_data) - block_size, size=(1,))
-    idx = torch.tensor(train_data[ix:ix + block_size]).unsqueeze(0).to(device)
-    targets = torch.tensor(train_data[ix+1:ix + block_size+1]).unsqueeze(0).to(device)
+    ix = torch.randint(len(train_data) - BLOCK_SIZE, size=(1,))
+    idx = torch.tensor(train_data[ix:ix + BLOCK_SIZE]).unsqueeze(0).to(DEVICE)
+    targets = torch.tensor(train_data[ix+1:ix + BLOCK_SIZE+1]).unsqueeze(0).to(DEVICE)
     logits, loss = model(idx, targets)
     optimizer.zero_grad()
     loss.backward()
@@ -133,14 +133,14 @@ for step in range(100000):
     optimizer.step()
     scheduler.step()
     if step % 10 == 0:
-        ix = torch.randint(len(val_data) - block_size, size=(1,))
-        idx = torch.tensor(val_data[ix:ix + block_size]).unsqueeze(0).to(device)
-        targets = torch.tensor(val_data[ix + 1:ix + block_size + 1]).unsqueeze(0).to(device)
+        ix = torch.randint(len(val_data) - BLOCK_SIZE, size=(1,))
+        idx = torch.tensor(val_data[ix:ix + BLOCK_SIZE]).unsqueeze(0).to(DEVICE)
+        targets = torch.tensor(val_data[ix + 1:ix + BLOCK_SIZE + 1]).unsqueeze(0).to(DEVICE)
         _, val_loss = model(idx, targets)
-        print(f"step: {step}, train_loss{loss.item():.4f}, val_loss: {val_loss.item():.4f}")
+        print(f"step: {step}, train_loss: {loss.item():.4f}, val_loss: {val_loss.item():.4f}")
 
 # 推理
-model_str = torch.tensor([[stoi["F"]]]) # (batch_size, seq_len)
+model_str = torch.tensor([[stoi["F"]]]).to(DEVICE) # (batch_size, seq_len)
 model.eval()
 with torch.no_grad():
     for step in range(100):
