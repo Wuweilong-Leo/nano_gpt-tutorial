@@ -4,17 +4,17 @@
 
 ## 📍 当前位置
 
-- **已完成**：第 1-7 课（基础）+ 第 9 课（KQV）+ 第 10 课（Embedding + 位置编码）+ 第 11 课（Block + 完整 GPT 类）
-- **进行中**：第 11 课代码已跃进到完整可训练 GPT，**接完整莎士比亚数据，GPU 跑通真实训练，loss 降到 ~2.5**
-- **下次上课**：加生成功能（sample）——让模型真正吐字，最有成就感的 wow 时刻
+- **已完成**：第 1-7 课（基础）+ 第 9 课（KQV）+ 第 10 课（Embedding + 位置编码）+ 第 11 课（Block + 完整 GPT 类 + sample 生成）
+- **进行中**：完整 GPT 训练 + 推理生成全流程跑通，从 "F" 开头续写 100 字符
+- **下次上课**：观察生成质量 + 调 temperature/top-k 改善生成 +（可选）KV cache 优化推理
 
 ## 📊 进度仪表盘
 
 ```
-nanoGPT 实战主线：4 / 7 里程碑（M1 KQV ✅ + M2 Embedding ✅ + M3 Block ✅ + M4 完整GPT ✅）
-[████░░░] 57%
+nanoGPT 实战主线：5 / 7 里程碑（M1 KQV ✅ + M2 Embedding ✅ + M3 Block ✅ + M4 完整GPT ✅ + M5 训练生成 ✅）
+[█████░░] 71%
 
-整体课程：第 11 / 15 课完成，下次加 sample 生成
+整体课程：第 11 / 15 课完成（含 sample），下次优化生成质量
 ```
 
 ## ✅ 已完成课程
@@ -66,9 +66,35 @@ nanoGPT 实战主线：4 / 7 里程碑（M1 KQV ✅ + M2 Embedding ✅ + M3 Bloc
 - 口诀"要变换→先归一化；只搬运→不归一化"已在代码中体现，下次可简单确认是否真懂
 
 ### 下次上课流程
-1. 加**生成功能**（sample）——核心 3 步：取 logits 最后一行 → `multinomial` 采样 → 接回输入循环
-2. 让模型从 `"\n"` 开头续写几百字，看莎士比亚风格输出（wow 时刻）
-3.（可选）加 temperature / top-k 采样控制生成质量
+1. 看 sample 生成质量（loss 2.5 大概是"单词级"，能看出零星真词但不成句）
+2. 加 **temperature / top-k** 控制采样——高温多样但乱、低温保守但稳
+3.（可选）**KV cache** 优化推理——现在每步重算全长，缓存 K/V 后只算新 token，大幅加速
+4. loss 继续降（多训练或调超参），降到 1.x 才会出现可读莎士比亚
+
+### 📝 第 11 课补完：命名规范化 + sample 生成（2026-08-07）
+**命名规范（PEP 8，老师帮改）**：
+- `class block` → `Block`、`class gpt` → `GPT`（类名大驼峰，硬规范）
+- `head_num` → `n_head`（英文 `n_东西` 惯例）
+- `batches_num/tokens_num` → `B/T`（贴近官方 nanoGPT 短名）
+- 删 GPU 诊断打印，只留 `using device` 一行
+
+**学生新加的高级特性**（在别的 AI 学的）：
+- ✅ `Dropout(0.1)` 两处（attention 后 + MLP 后，防过拟合）
+- ✅ **权重共享** `lm_head.weight = wte.weight`（weight tying，输入输出共用表，减参数+效果更好）
+- ✅ train/val 9:1 划分 + 每步算 val_loss
+- ✅ `CosineAnnealingLR` 学习率退火 + `clip_grad_norm_(1.0)` 梯度裁剪
+- ✅ **sample 生成循环**：从 `"F"` 开头，取最后 logits → softmax → `multinomial` 抽签 → cat 接回 → 循环 100 步
+
+**修复的 bug（老师指出 + 学生改）**：
+1. `loss.items()` → `loss.item()`（多了 s 会崩，tensor 没 items 方法）
+2. `train_loss` 后漏冒号
+3. 推理缺 `model.eval() + torch.no_grad()`（eval 关 dropout、no_grad 不建计算图，否则 100 步累积 OOM）
+4. `block_size=64` 但生成 100 字符 → wpe 越界，改成 128
+
+**关键概念教学——为什么推理要 `torch.no_grad()`**：
+- 类比：训练=备课要记笔记（建计算图供 backward），推理=讲课不记笔记
+- `model.eval()` 管**层行为**（dropout 关闭），`torch.no_grad()` 管**计算图**（不存激活）——两件独立的事，推理都要
+- 学生反应"16GB 显存还好" → 老师提醒：现在数据小扛得住是运气，batch 加大/生成长文/换大模型都会爆；且 no_grad 能快 20-50%（推理行业标准写法，nanoGPT sample.py 也有）
 
 ### Block 完整结构（学生已实现）
 ```
