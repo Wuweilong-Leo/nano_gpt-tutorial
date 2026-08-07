@@ -16,7 +16,7 @@ class Block(torch.nn.Module):
         self.hidden_size = hidden_size
         self.drop = torch.nn.Dropout(p=0.1)
 
-    def forward(self, x): # x:(B, T, hidden_size)
+    def forward(self, x, kv_cache=None): # x:(B, T, hidden_size)
         x_base = x
         x = self.ln1(x) # 归一化
         q = self.w_q(x)
@@ -33,6 +33,12 @@ class Block(torch.nn.Module):
         q = q.transpose(1, 2) # (B, n_head, T, head_dim)
         k = k.transpose(1, 2)
         v = v.transpose(1, 2)
+
+        if kv_cache is not None:
+            k = torch.cat([kv_cache[0], k], dim=2)
+            v = torch.cat([kv_cache[1], v], dim=2)
+
+        new_kv_cache = (k,v)
 
         k = k.transpose(-1, -2) # (B, n_head, head_dim, T)
 
@@ -55,9 +61,9 @@ class Block(torch.nn.Module):
 
         '''
         score = score / ((self.hidden_size / n_head) ** 0.5)
-
-        mask = torch.tril(torch.ones(T, T, device=x.device)) # 生成一个下三角形矩阵（device=x.device：跟 x 同设备，否则 GPU 上 score 是 cuda、mask 是 cpu 会报错）
-        score = score.masked_fill(mask == 0, float('-inf')) # 防止看到未来的输入
+        if kv_cache is None:
+            mask = torch.tril(torch.ones(T, T, device=x.device)) # 生成一个下三角形矩阵（device=x.device：跟 x 同设备，否则 GPU 上 score 是 cuda、mask 是 cpu 会报错）
+            score = score.masked_fill(mask == 0, float('-inf')) # 防止看到未来的输入
         score = torch.softmax(score, dim=-1) # 生成分数占比，表示每个token对其他token的关注度占比
         score = self.drop(score) # 让矩阵每个元素又10%的概率为0，防止过拟合
         output = score @ v # 生成融合上下文信息的新值 (B, n_head, T, head_dim)
@@ -77,7 +83,7 @@ class Block(torch.nn.Module):
         output = self.drop(output)
         output = output + output_base # (B, T, hidden_size)
 
-        return output
+        return output, new_kv_cache
 
 DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
 print(f'using device: {DEVICE}')
@@ -93,18 +99,26 @@ class GPT(torch.nn.Module):
         self.lm_head.weight = self.wte.weight # weight type, 单位长度下向量点积越大，相似读越高
         self.vocab_size = vocab_size
 
-    def forward(self, idx, targets = None):
+    def forward(self, idx, targets = None, kv_cache=None, pos_val=None):
         B, T = idx.shape[0], idx.shape[1]
-        pos = torch.arange(T).unsqueeze(0).to(DEVICE) # (1, T)：靠广播对齐 batch 维
+        if pos_val is None:
+            pos = torch.arange(T).unsqueeze(0).to(DEVICE) # (1, T)：靠广播对齐 batch 维
+        else:
+            pos = torch.tensor([[pos_val]]).to(DEVICE)
         x = self.wte(idx) + self.wpe(pos)
-        for b in self.blocks:
-            x = b(x)
+        kv_caches = []
+        for i,b in enumerate(self.blocks):
+            kv_cache_tmp = None
+            if kv_cache is not None:
+                kv_cache_tmp = kv_cache[i]
+            x, new_kv_cache = b(x, kv_cache=kv_cache_tmp)
+            kv_caches.append(new_kv_cache)
         x = self.ln_f(x)
         logits = self.lm_head(x)
         if targets is not None:
             loss = torch.nn.functional.cross_entropy(logits.view(-1, self.vocab_size), targets.view(-1))
             return logits, loss
-        return logits
+        return logits, kv_caches
 
 with open(r"F:\study\big_model\nanoGPT\data\shakespeare_char\input.txt", "r") as f:
     text = f.read()
@@ -122,11 +136,11 @@ val_data = data[n:]
 scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max = 10000)
 
 # 训练
-for step in range(10000):
+for step in range(100):
     ix = torch.randint(len(train_data) - BLOCK_SIZE, size=(1,))
     idx = torch.tensor(train_data[ix:ix + BLOCK_SIZE]).unsqueeze(0).to(DEVICE)
     targets = torch.tensor(train_data[ix+1:ix + BLOCK_SIZE+1]).unsqueeze(0).to(DEVICE)
-    logits, loss = model(idx, targets)
+    logits, loss = model(idx, targets, pos_val=None)
     optimizer.zero_grad()
     loss.backward()
     torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0) # 防止梯度爆炸，梯度和如果高于1，就等比例缩小
@@ -143,8 +157,14 @@ for step in range(10000):
 model_str = torch.tensor([[stoi["F"]]]).to(DEVICE) # (batch_size, seq_len)
 model.eval()
 with torch.no_grad():
+    kv_cache = None
     for step in range(100):
-        logits = model(model_str)
+        if step == 0:
+            input_char = model_str
+        else:
+            input_char = next_char
+        logits, new_kv_cache = model(input_char, kv_cache=kv_cache, pos_val=step)
+        kv_cache = new_kv_cache
         logits = logits[:,-1,:] # 取最后一个token的评分 (batch_size, vocab_size)
         probs = torch.softmax(logits, dim=-1) # 获得概率 (batch_size, vocab_size)
         next_char = torch.multinomial(probs, 1) # 按概率抽签，1表示抽1个 (batch_size, 1)

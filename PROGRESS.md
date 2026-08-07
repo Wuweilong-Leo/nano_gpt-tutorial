@@ -1,12 +1,12 @@
 # 学习进度
 
-> **下次上课从这里继续。** 最后更新：2026-08-07
+> **下次上课从这里继续。** 最后更新：2026-08-08
 
 ## 📍 当前位置
 
 - **已完成**：第 1-7 课（基础）+ 第 9-11 课（KQV/Embedding/Block/完整 GPT/训练生成）= 里程碑 M0-M5
-- **进行中**：完整 GPT 训练 + 推理生成全流程跑通（10万步 loss 613→2.3）
-- **下次上课**：**M6**——temperature/top-k/top-p 采样 + perplexity 困惑度 + KV cache 推理加速
+- **进行中**：M6 生成质量+评估（KV cache 已提前自学完成 ✅，剩下 temperature/采样/perplexity 等待上课）
+- **下次上课**：**M6 剩余**——temperature/top-k/top-p 采样 + perplexity 困惑度 + beam search + 训练工程细节（AdamW/warmup/CE vs MSE/LN vs BN）
 
 ## 📊 进度仪表盘
 
@@ -14,7 +14,7 @@
 端到端主线：5 / 15 里程碑完成（M0-M5 ✅）
 [███░░░░░░░░░] 33%
 
-下次：M6 生成质量+评估（temperature/采样/perplexity/KV cache）
+下次：M6 剩余（temperature/采样/perplexity/beam search/训练工程细节）— KV cache 已提前搞定 ✅
 最终毕业：M15 完整 agent + 框架对照
 ```
 
@@ -96,6 +96,27 @@
 - 类比：训练=备课要记笔记（建计算图供 backward），推理=讲课不记笔记
 - `model.eval()` 管**层行为**（dropout 关闭），`torch.no_grad()` 管**计算图**（不存激活）——两件独立的事，推理都要
 - 学生反应"16GB 显存还好" → 老师提醒：现在数据小扛得住是运气，batch 加大/生成长文/换大模型都会爆；且 no_grad 能快 20-50%（推理行业标准写法，nanoGPT sample.py 也有）
+
+### 📝 KV cache 提前自学完成（2026-08-08，M6 子项）
+学生**提前自学**实现了 KV cache 推理加速（本来是 M6 的内容，还没上课就动手了）。在 `lesson09_attention.py` 上改造：
+- ✅ `Block.forward(x, kv_cache=None)`：接 cache 参数，cat 拼历史 K/V，返回 `(output, new_kv_cache)`
+- ✅ `GPT.forward(idx, targets=None, kv_cache=None, pos_val=None)`：用 list 收集每层 cache，推理返回 `(logits, kv_caches)`
+- ✅ 推理循环改成每次只喂新 token（第一步喂"F"，之后喂 `next_char`），cache 一步步传下去
+- ✅ `pos_val` 参数解决位置编码偏移（推理第 step 步用位置 step，不再每个字都套位置 0）
+- ✅ mask 用 `if kv_cache is None` 包住——推理第二步只喂 1 个新 token 没未来可挡，不需要 mask
+
+**踩的坑（4 个，学生自己改的 + 老师指点的）**：
+1. cache 没传下去：`logits, _ = model(...)` 把第二个返回值丢了 → 改成 `logits, new_kv_cache = model(...)` 再赋回 `kv_cache`
+2. 元组没拆：`torch.cat([kv_cache, k])` 里 kv_cache 是 `(k_old, v_old)` 元组 → 拆成 `kv_cache[0]`/`kv_cache[1]`
+3. k 存进 cache 前转置过：`new_kv_cache=(k,v)` 写在 `k.transpose(-1,-2)` 之后，导致 k/v 形状不一致下次拼崩 → 挪到 transpose **之前**，且要**无条件**执行（不能只在 `if kv_cache is not None` 里，否则训练时 `UnboundLocalError`）
+4. pos 设备不匹配：`torch.tensor([[pos_val]])` 默认 CPU，wpe 在 GPU → 加 `.to(DEVICE)`（老坑再现：新张量喂 GPU 模型都得搬设备）
+
+**关键理解——KV cache 为啥能加速**：
+- 不用 cache：生成第 N 个字时，前 N-1 个字的 K/V 全部重算一遍（O(N²) 累加）
+- 用 cache：前 N-1 个字的 K/V 存着，每步只算新 token 的 K/V 拼上去 → 推理从 O(N²) 降到 O(N)
+- **cache 只加速、不改结果**：同样的随机种子，用不用 cache 生成结果应一致（验证 cache 实现对不对的判据）
+
+**遗留定时炸弹**（现在不炸）：`wpe=Embedding(block_size=128)`，生成超过 128 字时 `pos_val=128` 越界崩。现在跑 100 步没事，以后想生成长文再改（调大 block_size 或加截断逻辑）。
 
 ### Block 完整结构（学生已实现）
 ```
