@@ -1,12 +1,12 @@
 # 学习进度
 
-> **下次上课从这里继续。** 最后更新：2026-08-08
+> **下次上课从这里继续。** 最后更新：2026-08-09
 
 ## 📍 当前位置
 
 - **已完成**：第 1-7 课（基础）+ 第 9-11 课（KQV/Embedding/Block/完整 GPT/训练生成）= 里程碑 M0-M5
-- **进行中**：M6 生成质量+评估（KV cache 已提前自学完成 ✅，剩下 temperature/采样/perplexity 等待上课）
-- **下次上课**：**M6 剩余**——temperature/top-k/top-p 采样 + perplexity 困惑度 + beam search + 训练工程细节（AdamW/warmup/CE vs MSE/LN vs BN）
+- **进行中**：M6 生成质量+评估（KV cache ✅ + temperature 对照实验 ✅ + top-k 手写 ✅，剩 top-p/perplexity/beam search）
+- **下次上课**：**M6 剩余**——top-p 实现 + perplexity 困惑度 + beam search + 训练工程细节（AdamW/warmup/CE vs MSE/LN vs BN）+ 欠着的一个思考题（索引为什么必须跟着走）
 
 ## 📊 进度仪表盘
 
@@ -15,7 +15,7 @@
 [███░░░░░░░░░] 33%
 三条目标线：A 通晓大模型 / B 通晓 agent / C 通晓 AI infra（2026-08-08 新增）
 
-下次：M6 剩余（temperature/采样/perplexity/beam search/训练工程细节 + infra：PagedAttention/gradient checkpointing/profiling）— KV cache 已提前搞定 ✅
+下次：M6 剩余（top-p/perplexity/beam search/训练工程细节 + infra：PagedAttention/gradient checkpointing/profiling）— KV cache ✅ + temperature ✅ + top-k ✅ 已搞定
 最终毕业：M15 完整 agent + 框架对照
 ```
 
@@ -118,6 +118,41 @@
 - **cache 只加速、不改结果**：同样的随机种子，用不用 cache 生成结果应一致（验证 cache 实现对不对的判据）
 
 **遗留定时炸弹**（现在不炸）：`wpe=Embedding(block_size=128)`，生成超过 128 字时 `pos_val=128` 越界崩。现在跑 100 步没事，以后想生成长文再改（调大 block_size 或加截断逻辑）。
+
+### 📝 M6 第 1 课：temperature + top-k（2026-08-09）
+**temperature 三温度对照实验**（0.5 / 1.0 / 1.5，各生成 100 字符）：
+- 改造：`temperatures = [0.5, 1.0, 1.5]` + `for i in range(3)` 一次运行三连测，`logits = logits / temperatures[i]`（softmax **之前**除——位置正确）
+- ✅ **控制变量教训（第一次实验作废）**：最初每次运行脚本都重新训练，三个温度用的是三个不同大脑，对比无效 → 改成一次运行内三连测，同一模型共用
+- ✅ **又一个 bug 被学生自己钓出来**：`model_str` 初始化在 `for i` 外面 → 第二轮接着第一轮生成的 101 字符继续写 → 挪进循环内，每轮从 `F` 白纸开始
+- **训练步数 100 → 5000**：val_loss 9.8 → 1.5 以下，模型从"不会说话"到"会排剧本格式"（没有好 brain，采样实验全是噪声——巧妇难为无米之炊）
+
+**三组输出体检**（对照实验成功关键）：
+| 温度 | 性格 | 诊断 |
+|---|---|---|
+| 0.5 | `the/and/e` 复读机 | 低温=平庸但保险，模型坚守"最常见"而非"最妙" |
+| 1.0 | 角色名+冒号+对白，标准莎翁剧本格式 | 默认推荐 0.7~1.0 |
+| 1.5 | 大写乱码 `FOLKIULG` 满天飞 | 高温拉平差距 → 稀有字符（大写）出场率被抬升 |
+
+**高温机理（学生自己想的，方向对）**：温差减小 → 分布变平 → 低概率词概率升高。老师补全：softmax 是 e 的指数不是平方，除温度发生在它前面；算例：logits=[3,1]，B 概率 T=1.0 时 12% → T=2.0 时 27%（冷门翻倍，不改排名只改冷门逆袭率）。
+
+**循环陷阱**：自回归生成 = 自己喂自己，一旦概率最高的 token 是无意义的（如 E），一步错步步错锁死循环——真实产品要 top-k/top-p 配合。
+
+**top-k 手写完成**（学生自己写的五步）：
+```python
+v, idx = torch.topk(probs, TOP_K)          # 解包 values+indices
+probs = torch.zeros_like(probs)            # 全 0 格（不能复用旧张量，否则漏网）
+probs.scatter_(1, idx, v)                  # 邮差送信：按 idx 地址投 v 进 65 格
+probs = probs / probs.sum(dim=-1, keepdim=True)  # 重新归一化（幸存者之和≠1）
+next_char = torch.multinomial(probs, 1)    # 全尺寸抽样 → 直接拿真 token 索引
+```
+- `scatter_` 邮差送信类比：idx=地址，v=信，dim=1 往行内按列投
+- `dim=-1` = 最后一个维度 = 概率维，张量变 3D/4D 也不用改
+- 学生问过：dim=-1 是为啥 / 想让老师代写（**被拒**——手写原则不能破，给了骨架+两个空+debug 仪式）
+
+**待办**：
+- [ ] TOP_P = 0.9 还没实现（top-k 先看效果）
+- [ ] 思考题欠着：为什么 `multinomial(probs2)` 给真 token 而 `multinomial(v)` 给的是"第几名"（索引必须跟着走）
+- [ ] 观察点核对：三组开头一样吗 / 谁通顺 / 谁重复 / 谁乱码（已部分完成）
 
 ### Block 完整结构（学生已实现）
 ```

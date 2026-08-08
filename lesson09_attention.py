@@ -136,7 +136,7 @@ val_data = data[n:]
 scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max = 10000)
 
 # 训练
-for step in range(100):
+for step in range(5000):
     ix = torch.randint(len(train_data) - BLOCK_SIZE, size=(1,))
     idx = torch.tensor(train_data[ix:ix + BLOCK_SIZE]).unsqueeze(0).to(DEVICE)
     targets = torch.tensor(train_data[ix+1:ix + BLOCK_SIZE+1]).unsqueeze(0).to(DEVICE)
@@ -153,27 +153,38 @@ for step in range(100):
         _, val_loss = model(idx, targets)
         print(f"step: {step}, train_loss: {loss.item():.4f}, val_loss: {val_loss.item():.4f}")
 
+TOP_K = 50
+TOP_P = 0.9
+
 # 推理
-model_str = torch.tensor([[stoi["F"]]]).to(DEVICE) # (batch_size, seq_len)
 model.eval()
 with torch.no_grad():
-    kv_cache = None
-    for step in range(100):
-        if step == 0:
-            input_char = model_str
-        else:
-            input_char = next_char
-        logits, new_kv_cache = model(input_char, kv_cache=kv_cache, pos_val=step)
-        kv_cache = new_kv_cache
-        logits = logits[:,-1,:] # 取最后一个token的评分 (batch_size, vocab_size)
-        probs = torch.softmax(logits, dim=-1) # 获得概率 (batch_size, vocab_size)
-        next_char = torch.multinomial(probs, 1) # 按概率抽签，1表示抽1个 (batch_size, 1)
-        model_str = torch.cat([model_str, next_char], dim=1) # next_char = (1,1)
+    for i in range(3):
+        model_str = torch.tensor([[stoi["F"]]]).to(DEVICE) # (batch_size, seq_len)
+        temperatures = [0.5, 1.0, 1.5] # 温度系数，越大越随机，越小越确定
+        print(f"temperature: {temperatures[i]}")
+        kv_cache = None
+        for step in range(100):
+            if step == 0:
+                input_char = model_str
+            else:
+                input_char = next_char
+            logits, new_kv_cache = model(input_char, kv_cache=kv_cache, pos_val=step)
+            kv_cache = new_kv_cache
+            logits = logits[:,-1,:] # 取最后一个token的评分 (batch_size, vocab_size)
+            logits = logits / temperatures[i] # 温度系数，越大越随机，越小越确定
+            probs = torch.softmax(logits, dim=-1) # 获得概率 (batch_size, vocab_size)
+            v, idx = torch.topk(probs, TOP_K)
+            probs = torch.zeros_like(probs)
+            probs.scatter_(1, idx, v) # 只保留前TOP_K个概率，其他置0
+            probs = probs / probs.sum(dim=-1, keepdim=True) 
+            next_char = torch.multinomial(probs, 1) # 按概率抽签，1表示抽1个 (batch_size, 1)
+            model_str = torch.cat([model_str, next_char], dim=1) # next_char = (1,1)
 
-ret = ""
-for i in range(model_str.shape[1]):
-    ret += itos[model_str[0, i].item()]
-print(ret)
+        ret = ""
+        for i in range(model_str.shape[1]):
+            ret += itos[model_str[0, i].item()]
+        print(ret)
 
 
 
