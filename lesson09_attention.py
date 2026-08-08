@@ -156,13 +156,40 @@ for step in range(5000):
 TOP_K = 50
 TOP_P = 0.9
 
+def top_k_filtering(probs, top_k=50):
+    v, idx = torch.topk(probs, top_k)
+    probs = torch.zeros_like(probs)
+    probs.scatter_(1, idx, v) # 只保留前top_k个概率，其他置0
+    probs = probs / probs.sum(dim=-1, keepdim=True) # 归一
+    return probs
+
+def top_p_filtering(probs, top_p=0.9):
+    v, idx = torch.sort(probs, descending=True, dim=-1)
+    probs = torch.zeros_like(probs)
+    p = 0.0
+    new_v = torch.tensor([]).unsqueeze(0).to(DEVICE)
+    new_idx = torch.tensor([], dtype=torch.long).unsqueeze(0).to(DEVICE)
+    j = 0
+    for i in idx[0]:
+        p_tmp = v[0][j]
+        new_v = torch.cat([new_v, torch.tensor([p_tmp]).unsqueeze(0).to(DEVICE)], dim=1)
+        new_idx = torch.cat([new_idx, torch.tensor([i]).unsqueeze(0).to(DEVICE)], dim=1)
+        p += p_tmp
+        j += 1
+        if p > top_p:
+            break
+
+    probs.scatter_(1, new_idx, new_v) # 只保留前top_p个概率，其他置0
+    probs = probs / probs.sum(dim=-1, keepdim=True) # 归一
+    return probs
+
 # 推理
 model.eval()
 with torch.no_grad():
-    for i in range(3):
+    for round in range(3):
         model_str = torch.tensor([[stoi["F"]]]).to(DEVICE) # (batch_size, seq_len)
         temperatures = [0.5, 1.0, 1.5] # 温度系数，越大越随机，越小越确定
-        print(f"temperature: {temperatures[i]}")
+        print(f"temperature: {temperatures[round]}")
         kv_cache = None
         for step in range(100):
             if step == 0:
@@ -172,12 +199,10 @@ with torch.no_grad():
             logits, new_kv_cache = model(input_char, kv_cache=kv_cache, pos_val=step)
             kv_cache = new_kv_cache
             logits = logits[:,-1,:] # 取最后一个token的评分 (batch_size, vocab_size)
-            logits = logits / temperatures[i] # 温度系数，越大越随机，越小越确定
+            logits = logits / temperatures[round] # 温度系数，越大越随机，越小越确定
             probs = torch.softmax(logits, dim=-1) # 获得概率 (batch_size, vocab_size)
-            v, idx = torch.topk(probs, TOP_K)
-            probs = torch.zeros_like(probs)
-            probs.scatter_(1, idx, v) # 只保留前TOP_K个概率，其他置0
-            probs = probs / probs.sum(dim=-1, keepdim=True) 
+            probs = top_k_filtering(probs, top_k=TOP_K) # 只保留前top_k个概率，其他置0
+            probs = top_p_filtering(probs, top_p=TOP_P) # 只保留前top_p概率，其他置0
             next_char = torch.multinomial(probs, 1) # 按概率抽签，1表示抽1个 (batch_size, 1)
             model_str = torch.cat([model_str, next_char], dim=1) # next_char = (1,1)
 

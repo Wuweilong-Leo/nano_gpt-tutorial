@@ -5,8 +5,8 @@
 ## 📍 当前位置
 
 - **已完成**：第 1-7 课（基础）+ 第 9-11 课（KQV/Embedding/Block/完整 GPT/训练生成）= 里程碑 M0-M5
-- **进行中**：M6 生成质量+评估（KV cache ✅ + temperature 对照实验 ✅ + top-k 手写 ✅，剩 top-p/perplexity/beam search）
-- **下次上课**：**M6 剩余**——top-p 实现 + perplexity 困惑度 + beam search + 训练工程细节（AdamW/warmup/CE vs MSE/LN vs BN）+ 欠着的一个思考题（索引为什么必须跟着走）
+- **进行中**：M6 生成质量+评估（采样全章收官 ✅：temperature/top-k/top-p/封装，剩 perplexity/beam search/训练工程细节）
+- **下次上课**：**M6 剩下**——perplexity 困惑度 + beam search + 训练工程细节（AdamW/warmup/CE vs MSE/LN vs BN）+ infra 点
 
 ## 📊 进度仪表盘
 
@@ -15,7 +15,7 @@
 [███░░░░░░░░░] 33%
 三条目标线：A 通晓大模型 / B 通晓 agent / C 通晓 AI infra（2026-08-08 新增）
 
-下次：M6 剩余（top-p/perplexity/beam search/训练工程细节 + infra：PagedAttention/gradient checkpointing/profiling）— KV cache ✅ + temperature ✅ + top-k ✅ 已搞定
+下次：M6 剩余（perplexity/beam search/训练工程细节 + infra：PagedAttention/gradient checkpointing/profiling）— 采样全章 ✅（temperature + top-k + top-p + 封装）
 最终毕业：M15 完整 agent + 框架对照
 ```
 
@@ -149,10 +149,22 @@ next_char = torch.multinomial(probs, 1)    # 全尺寸抽样 → 直接拿真 to
 - `dim=-1` = 最后一个维度 = 概率维，张量变 3D/4D 也不用改
 - 学生问过：dim=-1 是为啥 / 想让老师代写（**被拒**——手写原则不能破，给了骨架+两个空+debug 仪式）
 
-**待办**：
-- [ ] TOP_P = 0.9 还没实现（top-k 先看效果）
-- [ ] 思考题欠着：为什么 `multinomial(probs2)` 给真 token 而 `multinomial(v)` 给的是"第几名"（索引必须跟着走）
-- [ ] 观察点核对：三组开头一样吗 / 谁通顺 / 谁重复 / 谁乱码（已部分完成）
+### 📝 M6 第 1 课补完：top-p + 函数封装（2026-08-09，采样全章收官 ✅）
+**top-p 实现**（学生独立完成，`torch.sort` 降序 → cumsum 累计 → 超 0.9 断 → scatter 回全尺寸 → 归一化）：
+- 核心理解：**top-k 管"池子边界（名次）"，top-p 管"池内竞争（份额）"**——top-k 不改"池内平票"，高温下第 1 名和第 50 名差距小，top-p 按累计概率动态收网（低温分布尖→池子自动缩到 2-3 个；高温分布平→池子自动放大）
+- 三件套分工总结：**温度管坡度、top-k 管名次、top-p 管份额**——真实 API（DeepSeek/ChatGPT）三参数永远同时出现
+- 名次/座位分家（延续 VSCode 风格追问）：`v` 按名次排、`indices` 记录原座位号，循环必须同时拿两者的第 j 个
+- ✅ **学生提出封装需求**（"要不要把 topk 和 topp 封装成两个方法"）→ 交付 `top_k_filtering(probs, top_k=50)` / `top_p_filtering(probs, top_p=0.9)`，接口统一（B, vocab）→（B, vocab），主循环变三行：top_k → top_p → multinomial（与 Hugging Face 命名撞名，工业界标准叫法）
+- **踩坑三连（dtype / device / 维度）**：
+  1. dtype：`torch.tensor([])` 空张量默认 float32，cat 拼 int64 索引报错 → 初始化加 `dtype=torch.long`。**教训：修 dtype 不匹配要看语义——索引/位置永远整数，概率/分数才浮点**
+  2. 维度：`p_tmp.unsqueeze(0)` 只加一维变 `(1,)`，`new_v` 是 `(1,0)` 二维 → 报 got 2 and 1 → 标量加两维成 `(1,1)`（或 `torch.tensor([p_tmp]).unsqueeze(0)`）
+  3. device：`torch.tensor([p_tmp])` 默认 CPU 新建，cat 报跨设备 → 改 `p_tmp.unsqueeze(0).unsqueeze(0)` 或 `.to(DEVICE)`。**老坑重现（和 pos_val 那次同款）：新建张量必须登记户口**
+- 学生反馈：**语法/API 细节（dtype/维度/报错）要求直接给答案，别再猜谜；概念/设计问题保留引导**（已写入教学记忆）
+
+**采样效果验证**（val_loss 2.31）：0.5 低温→池子收网到 2-3 个字符、`le/my` 单词级复读；1.0 最佳武器（were you/thy/your 出现，节奏感）；1.5 半诗半乱。单词级复读 vs 之前字符级复读 = val_loss 9.8 → 2.31 的具象化
+
+**采样全章收官** ✅（temperature + top-k + top-p + 封装 + 对照实验）
+- 思考题已答：`multinomial(probs2)` 给真 token 因为全尺寸索引对齐词表，`multinomial(v)` 给"第几名"（名次是孤儿，需 idx 翻译）——学生用"位子即身份，名次是孤儿"概括
 
 ### Block 完整结构（学生已实现）
 ```
