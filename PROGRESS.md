@@ -13,8 +13,9 @@
 ```
 端到端主线：5 / 15 里程碑完成（M0-M5 ✅）
 [███░░░░░░░░░] 33%
+三条目标线：A 通晓大模型 / B 通晓 agent / C 通晓 AI infra（2026-08-08 新增）
 
-下次：M6 剩余（temperature/采样/perplexity/beam search/训练工程细节）— KV cache 已提前搞定 ✅
+下次：M6 剩余（temperature/采样/perplexity/beam search/训练工程细节 + infra：PagedAttention/gradient checkpointing/profiling）— KV cache 已提前搞定 ✅
 最终毕业：M15 完整 agent + 框架对照
 ```
 
@@ -246,12 +247,23 @@ x ──→ ln1 ──→ attention ──→ + ──→ x1
 ### 为什么需要位置编码（关键理解）
 attention 计算 `score[i][j] = q[i]·k[j]` 只用内容、不用位置 → 同样字符不同顺序算出 score 一样 → 必须额外注入位置信息
 
-## 🗺️ 完整里程碑路线图（2026-08-07 与 Haiku 二次讨论定稿·端到端版）
+## 🗺️ 完整里程碑路线图（2026-08-07 与 Haiku 二次讨论定稿，2026-08-08 补 AI infra 融合线）
 
-**两条目标线（缺一不可）**：
+**三条目标线（缺一不可）**：
 - **目标 A：通晓大模型** —— M6-M11 全部学完（采样/BPE/SFT/LoRA/RLHF/架构进阶/量化），一个都不能少。即使 LoRA/RLHF/RoPE 这些"对搭 agent 不是硬性必需"，但对"通晓大模型"是必修。
 - **目标 B：通晓 agent** —— M12-M15 全部学完（四零件/工具/记忆/ReAct/框架对照）。
-- **毕业项目是 agent（M15），但"通晓"的定义是 A+B 全懂，不是"能搭出 agent 就毕业"。**
+- **目标 C：通晓 AI infra** —— 理论全覆盖面试考点（训练/推理/部署），+ 亲手部署过一次推理服务。**不等于"能跑多节点训练"**——分布式训练在 16G 单卡上永远纯理论+图解；infra 真实战就三样：gradient checkpointing、profiling、推理部署（量化→serve→OpenAI兼容→streaming）。
+- **毕业项目是 agent（M15），但"通晓"的定义是 A+B+C 全懂，不是"能搭出 agent 就毕业"。**
+
+### 🔧 AI infra 融合策略（2026-08-08 与 Haiku 三次讨论定稿）
+
+**策略 C：主线穿插 + 部署仪式**（不单独开 M_infra，避免枯燥名词课+拖慢进 agent）。
+- infra 理论**散进 M6（+0.5课）和 M11（+0.5课）**，作为"已学知识的另一副眼镜"。比如 M6 讲 KV cache（学生已实现朴素版）时顺势戴 infra 眼镜看 10 分钟 PagedAttention。
+- infra 实战**集中到"部署仪式"**（过渡仪式 半课→1课，净+0.5）：把 Qwen3-0.6B 部署成 OpenAI 兼容 API，全链路跑一遍。
+- **infra 和 agent 闭环**：部署仪式产出的本地 API 直接给 M12-M15 agent 当后端——infra 不是和 agent 抢时间，是 agent 的上游。
+- **总课数 +1.5**（M6+0.5 / M11+0.5 / 部署仪式+0.5），可接受。时间紧砍 speculative decoding 和 chunked prefill（面试偏冷）。
+- **infra 真实战清单（16G 能跑）**：gradient checkpointing（加到 nanoGPT 对比显存）、profiling（torch profiler）、推理部署（GGUF量化→serve→FastAPI→streaming）。其余（DDP/ZeRO/TP/NCCL/集群/通信）纯理论+图解。
+- **环境风险**：RTX 5080 Blackwell sm_120 很新，vLLM 在 Windows 原生支持差。部署仪式保底用 Ollama（封装 llama.cpp，Windows 友好，自带 OpenAI 兼容 API），到时再定。
 
 **核心主线一句话**：你不是在学一堆散件，你是在造一个 agent——只是先把每个零件搞懂。tokenizer=agent 听懂人话的前提，KV cache=agent 响应快的前提，SFT=agent 听指令的前提，采样=agent 多样性的前提。但注意：这条主线是**学习动机**，不是"砍掉用不到的知识"——通晓大模型的所有知识点都要学，主线只是帮你理解每个知识点最终怎么在 agent 里发挥作用。
 
@@ -271,13 +283,13 @@ attention 计算 `score[i][j] = q[i]·k[j]` 只用内容、不用位置 → 同�
 
 | 里程碑 | 内容 | 课数 | 类型 |
 |--------|------|------|------|
-| **M6** 生成质量+评估+训练工程 | temperature/top-k/top-p 采样 + perplexity 困惑度 + KV cache 推理加速 + **beam search 对比** + **Adam vs AdamW** + **warmup+cosine 调度** + **cross-entropy 为啥用 CE 不用 MSE** + **梯度裁剪回顾** | 2-3 课 | 理论+改代码 |
+| **M6** 生成质量+评估+训练工程 | temperature/top-k/top-p 采样 + perplexity 困惑度 + KV cache 推理加速（已提前自学✅） + **beam search 对比** + **Adam vs AdamW** + **warmup+cosine 调度** + **cross-entropy 为啥用 CE 不用 MSE** + **梯度裁剪回顾** + 🔧infra：**PagedAttention**（vLLM核心，类比OS分页）+ **continuous batching** + **gradient checkpointing（实战！加到nanoGPT对比显存）** + **speculative decoding** + **profiling（实战！torch profiler）** | 2.5-3 课 | 理论+改代码 |
 | **M7** BPE+中文语料 | BPE 子词分词原理 → 训练 BPE → 用新 tokenizer 重训 GPT（词表 65→BPE） + **BBPE/tokenizer 工程面试题** | 2 课 | 实战代码 |
 | **M8** SFT 微调 | 指令数据格式 + SFT 训练循环（主线用 Qwen3-0.6B，详见"项目B技术选型"小节） + **预训练 vs 微调边界** | 1 课 | 实战代码 |
 | **M9** LoRA | LoRA/PEFT 原理 + Qwen3-0.6B LoRA 微调（transformers+peft+trl 从0写） + **QLoRA/全参微调对比** + 支线：给自己的 GPT 加小适配头 | 1 课 | 实战代码 |
 | **M10** 对齐理论 | reward model → RLHF 三阶段 → DPO + **PPO 概念**（纯讲+图解，不写代码，全课最难） | 1 课 | 纯理论 |
-| **M11** 行业地图+训练系统 | RoPE 深讲 + GQA/Flash/MoE/长上下文扫盲 + 量化 int8/int4 体验（bitsandbytes 0.50.0 NF4，诚实标注小模型量化学机制非提速） + **scaling law/Chinchilla** + **涌现能力** + **分布式训练（DDP/DP/ZeRO）** + **混合精度 amp** + **Attention O(n²) 复杂度** + **评测 benchmark（MMLU/HumanEval）** | 2 课 | 理论+小实验 |
-| **过渡仪式** | 自己 GPT vs API 同 prompt 生成对比 → 亲眼看差距（桥梁，半课） | 半课 | 体验 |
+| **M11** 行业地图+训练系统 | RoPE 深讲 + GQA/Flash/MoE/长上下文扫盲 + 量化 int8/int4 体验（bitsandbytes 0.50.0 NF4，诚实标注小模型量化学机制非提速） + **scaling law/Chinchilla** + **涌现能力** + **分布式训练（DDP/DP/ZeRO三阶段加深/张量并行TP/NCCL Ring AllReduce）** + **混合精度 amp** + **Attention O(n²) 复杂度** + **评测 benchmark（MMLU/HumanEval）** + 🔧infra：**GPTQ/AWQ**（对比朴素量化）+ **prefix caching / chunked prefill** | 2.5 课 | 理论+小实验 |
+| **🚀 部署仪式（原过渡仪式升级）** | 把 **Qwen3-0.6B 部署成 OpenAI 兼容 API**：GGUF int4 量化（显存1.2G→几百M）→ vLLM/Ollama serve（看 PagedAttention 实跑）→ FastAPI 包一层 `/v1/chat/completions` → 流式输出 streaming（SSE打字机）→ **三方对比：手写GPT / 本地API / 智谱云API**。产出物直接给 M12-M15 agent 当后端，infra 和 agent 闭环 | 1 课 | 实战部署 |
 
 **agent 段（M12-M15，拆成独立里程碑，每个核心概念一个 M）**：
 
@@ -342,6 +354,27 @@ attention 计算 `score[i][j] = q[i]·k[j]` 只用内容、不用位置 → 同�
 | PPO 概念（RLHF 用） | M10 | ⭐⭐ | 纯理论 |
 | BBPE / tokenizer 工程题 | M7 | ⭐⭐ | 理论 |
 
+**D. AI infra 段新增的面试考点（2026-08-08 补，目标C通晓infra）**：
+
+| 考点 | 在哪个 M 学 | 重要度 | 类型 |
+|------|------------|--------|------|
+| **PagedAttention**（vLLM 核心，KV cache 分页） | M6 | ⭐⭐⭐ | 理论+部署仪式看实跑 |
+| **continuous batching**（连续批处理） | M6 | ⭐⭐⭐ | 理论 |
+| **gradient checkpointing**（省显存换算力） | M6 | ⭐⭐⭐ | **实战（加到nanoGPT）** |
+| **speculative decoding**（小模型猜大模型验） | M6 | ⭐⭐ | 纯理论 |
+| **profiling / torch profiler** | M6 | ⭐⭐ | **实战** |
+| **ZeRO 三阶段**（1优化器/2+梯度/3+参数） | M11 | ⭐⭐⭐ | 纯理论（加深） |
+| **张量并行 TP**（对比 DDP） | M11 | ⭐⭐ | 纯理论 |
+| **NCCL / Ring AllReduce** | M11 | ⭐⭐ | 纯理论 |
+| **GPTQ / AWQ**（后训练量化算法） | M11 | ⭐⭐ | 纯理论 |
+| **prefix caching / chunked prefill** | M11 | ⭐⭐ | 纯理论 |
+| **推理部署：GGUF/Ollama/vLLM** | 部署仪式 | ⭐⭐⭐ | **实战** |
+| **FastAPI serving + OpenAI 兼容接口** | 部署仪式 | ⭐⭐⭐ | **实战** |
+| **流式输出 streaming（SSE）** | 部署仪式 | ⭐⭐⭐ | **实战** |
+| TensorRT-LLM / 蒸馏剪枝稀疏化 | M11 扫盲 | ⭐ | 行业扫盲 |
+
+**infra 通晓边界说明**：理论全覆盖上表（面试能讲清楚每个名词是什么/解决什么瓶颈/为什么这么设计）；实战只做三样（gradient checkpointing / profiling / 推理部署）。DDP/ZeRO/TP/NCCL 等分布式训练在 16G 单卡**永远纯理论+图解**，不假装能实战。集群编排（k8s/Slurm/RDMA/InfiniBand）行业扫盲知道名词即可。
+
 **C. agent 段新增的面试考点**：
 
 | 考点 | 在哪个 M 学 | 重要度 |
@@ -353,7 +386,7 @@ attention 计算 `score[i][j] = q[i]·k[j]` 只用内容、不用位置 → 同�
 | 多轮对话/上下文管理 | M13 | ⭐⭐ |
 | prompt engineering | M13 | ⭐⭐⭐ |
 
-**面试覆盖说明**：以上三表覆盖大模型算法岗/应用岗面试 90%+ 高频考点。RAG 和 CoT 原来不在 agent 路线里，因为面试高频，特意塞进 M13/M14。剩余 10%（如具体框架 API、业务场景题）靠毕业项目 M15 + 实战积累。
+**面试覆盖说明**：以上四表（A大模型细节/B路线图考点/C agent/D infra）覆盖大模型算法岗/应用岗/infra 岗面试 90%+ 高频考点。RAG 和 CoT 原来不在 agent 路线里，因为面试高频，特意塞进 M13/M14。infra 段（D 表）2026-08-08 补，覆盖推理引擎/部署/分布式训练高频考点。剩余 10%（如具体框架 API、业务场景题）靠毕业项目 M15 + 实战积累。
 
 ## 🔧 项目B技术选型（2026-08-07 定稿·M8-M15 全程用这套）
 
@@ -392,6 +425,9 @@ model_dir = snapshot_download('qwen/Qwen3-0.6B', cache_dir='F:/study/big_model/m
 - **BPE 训练抽象**：先拿 10 个英文单词手算 BPE 合并步骤（白板演示），再上代码。
 - **KV cache 维度对齐**：先画图（cache 形状 `[B, n_head, T, head_dim]`），再改 forward。
 - **LoRA 显存**：Qwen3-0.6B bf16 约 1.2G，LoRA 训练（r=16, seq 1024）峰值 ~4-5G，16G 极宽松；1.7B 峰值 ~8-10G（开 gradient_checkpointing）也够。加载用 `dtype=bfloat16`（Blackwell 原生支持），别 float32。
+- **infra 容易越挖越深**：尤其分布式训练水深，给理论设硬上限——M6/M11 里的 infra 内容严格按时长控制（每个点 5-10 分钟图解），不单独开 infra 深挖课。把 infra 兴趣引流到部署仪式（有出口有产物），别发散到"我也想搞分布式训练"（无底洞）。
+- **vLLM Windows 风险**：RTX 5080 Blackwell sm_120 很新，vLLM 在 Windows 原生支持差。部署仪式保底用 Ollama（封装 llama.cpp，Windows 友好，自带 OpenAI 兼容 API）；首选 WSL2 跑 vLLM；最保底 llama.cpp+FastAPI 手写。到部署仪式时再定，现在不动。
+- **分布式训练只能纯理论**：DDP/ZeRO/TP/NCCL 在 16G 单卡永远没法真跑，别试图用 `torchrun --nproc_per_node=2` 单卡模拟两卡（学生困惑+跑不出通信开销）。老实画图理解。
 
 ## 📌 备忘
 
