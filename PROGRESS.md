@@ -265,6 +265,42 @@ attention 计算 `score[i][j] = q[i]·k[j]` 只用内容、不用位置 → 同�
 - **infra 真实战清单（16G 能跑）**：gradient checkpointing（加到 nanoGPT 对比显存）、profiling（torch profiler）、推理部署（GGUF量化→serve→FastAPI→streaming）。其余（DDP/ZeRO/TP/NCCL/集群/通信）纯理论+图解。
 - **环境风险**：RTX 5080 Blackwell sm_120 很新，vLLM 在 Windows 原生支持差。部署仪式保底用 Ollama（封装 llama.cpp，Windows 友好，自带 OpenAI 兼容 API），到时再定。
 
+### 🔧 infra 项目配套全景（2026-08-08 与 Haiku 四次审视定稿）
+
+**两个项目的 infra 角色**：
+- **项目A（nanoGPT）= 训练 infra 实验田** + 分布式 toy 实验场（学生能改训练代码，每行都懂）
+- **项目B（Qwen3-0.6B）= 推理 infra 实验田** + agent 的 hello-world 闭环 demo（现成模型，重点在部署）
+
+**配套全景表**（Haiku 审视后修订，原方案 7/10 → 9/10）：
+
+| infra 知识点 | 配哪个项目 | 怎么配 | 实战度 |
+|---|---|---|---|
+| gradient checkpointing | A（nanoGPT） | Block 上加 `torch.utils.checkpoint`，对比开/关显存 | ✅实战 |
+| **mixed precision AMP** | A | fp32 / fp16+GradScaler / bf16 三组对比显存+loss 稳定性 | ✅**新增必加** |
+| **torch.compile** | A | `torch.compile(model)` 对比 step 时间，看 graph break | ✅**新增必加** |
+| profiling | A | torch profiler 跑训练，看算子耗时+显存追踪 | ✅实战 |
+| **KV cache 内存可视化** | A | 不同 seq_len 下量 KV cache 显存画曲线，给 PagedAttention 埋伏笔 | ✅**新增轻量** |
+| **Ring AllReduce toy** | A 旁支 | numpy 单进程模拟 N 节点环形通信，~100 行，验证 O(2n) 通信量 | ✅**toy（原纯理论升级）** |
+| **ZeRO 三阶段手算** | A 旁支 | 1B 模型 ZeRO-1/2/3 分片纸笔题（每卡存什么算清楚） | ✅**手算（原纯理论升级）** |
+| **张量并行 TP-by-hand** | A 旁支 | nanoGPT MLP 线性层手切列/行并行，验证数值不变，讲 Megatron AllReduce 点 | ✅**toy（原纯理论升级）** |
+| **DDP 单进程真代码** | A 旁支 | `world_size=1` 跑真 DDP 样板（init_process_group/DistributedSampler/DDP包装），会写不跑收益 | ✅**真代码（原纯理论升级）** |
+| 推理部署全家桶 | B（Qwen3） | GGUF量化→serve→FastAPI→OpenAI兼容→streaming，**多量化级别** | ✅实战 |
+| PagedAttention | B | vLLM/Ollama 跑 + **必读 SOSP'23 论文核心图/伪代码**（block table+分页KV） | 🟡看+读 |
+| continuous batching | B | 跑混合长度 prompt benchmark，对比 nanoGPT 静态 batch | 🟡看+测 |
+| prefix caching | B | vLLM flag 开关测 TTFT 对比 | 🟡看+测 |
+| speculative decoding | B | vLLM/Ollama flag + 读 draft/verify 论文摘要 | 🟡看+读 |
+| GPTQ / AWQ | B 理论 | Windows 折腾用 GGUF 替代；补读 GPTQ Hessian + AWQ 激活感知权重思路 | ❌理论+阅读 |
+| k8s/Slurm/RDMA/InfiniBand | 无 | 集群级扫盲，知道名词 | ❌扫盲 |
+| **agent 后端策略** | B→M12 | q4 做量化实验；**q8/fp16 做 agent hello-world 后端**；M12-15 复杂 agent 主后端用智谱 GLM 云 | 🛡️**防陷阱** |
+| **HF Spaces 部署（可选）** | B stretch | 推到 HF Spaces 拿公开 endpoint，简历加分 | ✅可选 stretch |
+
+**关键修订（Haiku 指出的三处加码）**：
+1. **项目A 漏了 AMP + torch.compile**——两个必加训练 infra。AMP 面试高频考"fp16 为啥要 loss scaling 而 bf16 不要"；compile 对应静态图编译概念，原方案完全漏了。
+2. **纯理论那批放弃太早**——Ring AllReduce/ZeRO/TP/DDP 都能 toy 化（numpy/手算/手切/单进程代码），从"我知道"升级到"我手写过"，面试拉开档次。术语澄清：activation checkpointing = gradient checkpointing（同一东西两名，文档写清楚防面试露怯）。
+3. **agent 闭环有质量陷阱**——0.6B int4 太弱 function calling 会翻车（漏字段/tool名错），学生分不清是 agent bug 还是模型弱。救法：**双精度部署 + 云主本地辅**——q4 做量化实验，q8/fp16 做 agent hello-world 后端，M12-15 复杂 agent 主后端用智谱 GLM 云，本地 API 只在 M12 第一节课做一次闭环 demo 不污染主课程。
+
+**不开第三项目**（Haiku 同意老师判断）：DDP 租云不必要（toy 实现已够面试）；HF Spaces 是项目B 的可选 stretch 不算新项目。
+
 **核心主线一句话**：你不是在学一堆散件，你是在造一个 agent——只是先把每个零件搞懂。tokenizer=agent 听懂人话的前提，KV cache=agent 响应快的前提，SFT=agent 听指令的前提，采样=agent 多样性的前提。但注意：这条主线是**学习动机**，不是"砍掉用不到的知识"——通晓大模型的所有知识点都要学，主线只是帮你理解每个知识点最终怎么在 agent 里发挥作用。
 
 **设计原则**：理论课与实战交织，**增量构建**——每课从 0 写 20-30 行，下课必须能跑出结果。架构进阶不搞名词轰炸（只 RoPE 深讲，其余压成"行业地图"扫盲）。agent 阶段**先手写禁框架**，框架对照放最后。
@@ -283,13 +319,13 @@ attention 计算 `score[i][j] = q[i]·k[j]` 只用内容、不用位置 → 同�
 
 | 里程碑 | 内容 | 课数 | 类型 |
 |--------|------|------|------|
-| **M6** 生成质量+评估+训练工程 | temperature/top-k/top-p 采样 + perplexity 困惑度 + KV cache 推理加速（已提前自学✅） + **beam search 对比** + **Adam vs AdamW** + **warmup+cosine 调度** + **cross-entropy 为啥用 CE 不用 MSE** + **梯度裁剪回顾** + 🔧infra：**PagedAttention**（vLLM核心，类比OS分页）+ **continuous batching** + **gradient checkpointing（实战！加到nanoGPT对比显存）** + **speculative decoding** + **profiling（实战！torch profiler）** | 2.5-3 课 | 理论+改代码 |
+| **M6** 生成质量+评估+训练工程 | temperature/top-k/top-p 采样 + perplexity 困惑度 + KV cache 推理加速（已提前自学✅） + **beam search 对比** + **Adam vs AdamW** + **warmup+cosine 调度** + **cross-entropy 为啥用 CE 不用 MSE** + **梯度裁剪回顾** + 🔧infra：**PagedAttention**（vLLM核心，必读SOSP'23论文）+ **continuous batching**（对比nanoGPT静态batch）+ **gradient checkpointing（实战！加到nanoGPT对比显存）** + **mixed precision AMP（实战！fp32/fp16+scaler/bf16三组对比）** + **torch.compile（实战！对比step时间）** + **profiling（实战！torch profiler）** + **KV cache 内存可视化（轻量）** + **speculative decoding** | 3 课 | 理论+改代码 |
 | **M7** BPE+中文语料 | BPE 子词分词原理 → 训练 BPE → 用新 tokenizer 重训 GPT（词表 65→BPE） + **BBPE/tokenizer 工程面试题** | 2 课 | 实战代码 |
 | **M8** SFT 微调 | 指令数据格式 + SFT 训练循环（主线用 Qwen3-0.6B，详见"项目B技术选型"小节） + **预训练 vs 微调边界** | 1 课 | 实战代码 |
 | **M9** LoRA | LoRA/PEFT 原理 + Qwen3-0.6B LoRA 微调（transformers+peft+trl 从0写） + **QLoRA/全参微调对比** + 支线：给自己的 GPT 加小适配头 | 1 课 | 实战代码 |
 | **M10** 对齐理论 | reward model → RLHF 三阶段 → DPO + **PPO 概念**（纯讲+图解，不写代码，全课最难） | 1 课 | 纯理论 |
-| **M11** 行业地图+训练系统 | RoPE 深讲 + GQA/Flash/MoE/长上下文扫盲 + 量化 int8/int4 体验（bitsandbytes 0.50.0 NF4，诚实标注小模型量化学机制非提速） + **scaling law/Chinchilla** + **涌现能力** + **分布式训练（DDP/DP/ZeRO三阶段加深/张量并行TP/NCCL Ring AllReduce）** + **混合精度 amp** + **Attention O(n²) 复杂度** + **评测 benchmark（MMLU/HumanEval）** + 🔧infra：**GPTQ/AWQ**（对比朴素量化）+ **prefix caching / chunked prefill** | 2.5 课 | 理论+小实验 |
-| **🚀 部署仪式（原过渡仪式升级）** | 把 **Qwen3-0.6B 部署成 OpenAI 兼容 API**：GGUF int4 量化（显存1.2G→几百M）→ vLLM/Ollama serve（看 PagedAttention 实跑）→ FastAPI 包一层 `/v1/chat/completions` → 流式输出 streaming（SSE打字机）→ **三方对比：手写GPT / 本地API / 智谱云API**。产出物直接给 M12-M15 agent 当后端，infra 和 agent 闭环 | 1 课 | 实战部署 |
+| **M11** 行业地图+训练系统 | RoPE 深讲 + GQA/Flash/MoE/长上下文扫盲 + 量化 int8/int4 体验（bitsandbytes 0.50.0 NF4，诚实标注小模型量化学机制非提速） + **scaling law/Chinchilla** + **涌现能力** + **分布式训练（DDP/DP/ZeRO三阶段加深/张量并行TP/NCCL Ring AllReduce）** + **混合精度 amp** + **Attention O(n²) 复杂度** + **评测 benchmark（MMLU/HumanEval）** + 🔧infra toy 实现：**Ring AllReduce**（numpy单进程模拟）+ **ZeRO 三阶段手算**（1B模型分片纸笔题）+ **TP-by-hand**（nanoGPT MLP手切列/行并行）+ **DDP 单进程真代码**（world_size=1样板）+ **GPTQ/AWQ**（对比朴素量化，读算法思路）+ **prefix caching / chunked prefill** | 2.5 课 | 理论+小实验+toy |
+| **🚀 部署仪式（原过渡仪式升级）** | 把 **Qwen3-0.6B 部署成 OpenAI 兼容 API**，**双精度部署**：q4 做量化实验（显存1.2G→几百M对比）+ q8/fp16 做 agent 后端 → vLLM/Ollama serve（看 PagedAttention 实跑）→ FastAPI 包一层 `/v1/chat/completions` → 流式输出 streaming（SSE打字机）→ **三方对比：手写GPT / 本地API / 智谱云API**。**agent 后端策略**：q4 量化实验，q8/fp16 做 M12 hello-world 闭环 demo，M12-15 复杂 agent 主后端用智谱 GLM 云（防 0.6B int4 function calling 翻车）。可选 stretch：部署到 HF Spaces 拿公开 endpoint | 1 课 | 实战部署 |
 
 **agent 段（M12-M15，拆成独立里程碑，每个核心概念一个 M）**：
 
@@ -360,12 +396,15 @@ attention 计算 `score[i][j] = q[i]·k[j]` 只用内容、不用位置 → 同�
 |------|------------|--------|------|
 | **PagedAttention**（vLLM 核心，KV cache 分页） | M6 | ⭐⭐⭐ | 理论+部署仪式看实跑 |
 | **continuous batching**（连续批处理） | M6 | ⭐⭐⭐ | 理论 |
-| **gradient checkpointing**（省显存换算力） | M6 | ⭐⭐⭐ | **实战（加到nanoGPT）** |
-| **speculative decoding**（小模型猜大模型验） | M6 | ⭐⭐ | 纯理论 |
+| **gradient checkpointing**（省显存换算力，=activation checkpointing 同义） | M6 | ⭐⭐⭐ | **实战（加到nanoGPT）** |
+| **mixed precision AMP**（fp16 loss scaling / bf16 不用） | M6 | ⭐⭐⭐ | **实战（三组对比）** |
+| **torch.compile**（静态图编译） | M6 | ⭐⭐ | **实战** |
+| **speculative decoding**（小模型猜大模型验） | M6 | ⭐⭐ | 纯理论+读论文 |
 | **profiling / torch profiler** | M6 | ⭐⭐ | **实战** |
-| **ZeRO 三阶段**（1优化器/2+梯度/3+参数） | M11 | ⭐⭐⭐ | 纯理论（加深） |
-| **张量并行 TP**（对比 DDP） | M11 | ⭐⭐ | 纯理论 |
-| **NCCL / Ring AllReduce** | M11 | ⭐⭐ | 纯理论 |
+| **ZeRO 三阶段**（1优化器/2+梯度/3+参数） | M11 | ⭐⭐⭐ | **手算（1B模型分片题）** |
+| **张量并行 TP**（对比 DDP） | M11 | ⭐⭐ | **toy（nanoGPT手切列/行并行）** |
+| **NCCL / Ring AllReduce** | M11 | ⭐⭐ | **toy（numpy单进程模拟）** |
+| **DDP 单进程真代码** | M11 | ⭐⭐ | **真代码（world_size=1样板）** |
 | **GPTQ / AWQ**（后训练量化算法） | M11 | ⭐⭐ | 纯理论 |
 | **prefix caching / chunked prefill** | M11 | ⭐⭐ | 纯理论 |
 | **推理部署：GGUF/Ollama/vLLM** | 部署仪式 | ⭐⭐⭐ | **实战** |
@@ -373,7 +412,7 @@ attention 计算 `score[i][j] = q[i]·k[j]` 只用内容、不用位置 → 同�
 | **流式输出 streaming（SSE）** | 部署仪式 | ⭐⭐⭐ | **实战** |
 | TensorRT-LLM / 蒸馏剪枝稀疏化 | M11 扫盲 | ⭐ | 行业扫盲 |
 
-**infra 通晓边界说明**：理论全覆盖上表（面试能讲清楚每个名词是什么/解决什么瓶颈/为什么这么设计）；实战只做三样（gradient checkpointing / profiling / 推理部署）。DDP/ZeRO/TP/NCCL 等分布式训练在 16G 单卡**永远纯理论+图解**，不假装能实战。集群编排（k8s/Slurm/RDMA/InfiniBand）行业扫盲知道名词即可。
+**infra 通晓边界说明**（2026-08-08 Haiku 审视后修订）：理论全覆盖上表；实战分三档——(1) 真实战：gradient checkpointing / **AMP** / **torch.compile** / profiling / 推理部署全家桶；(2) toy 实现：Ring AllReduce（numpy）/ ZeRO（手算）/ TP（手切线性层）/ DDP（单进程样板）——从"我知道"升级到"我手写过"；(3) 纯理论+阅读：GPTQ/AWQ 算法思路、speculative decoding 论文、PagedAttention SOSP'23 论文。集群编排（k8s/Slurm/RDMA/InfiniBand）行业扫盲知道名词即可。**不开第三项目、不租云**——toy 实现已够面试。
 
 **C. agent 段新增的面试考点**：
 
