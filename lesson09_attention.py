@@ -151,7 +151,7 @@ for step in range(5000):
         idx = torch.tensor(val_data[ix:ix + BLOCK_SIZE]).unsqueeze(0).to(DEVICE)
         targets = torch.tensor(val_data[ix + 1:ix + BLOCK_SIZE + 1]).unsqueeze(0).to(DEVICE)
         _, val_loss = model(idx, targets)
-        print(f"step: {step}, train_loss: {loss.item():.4f}, val_loss: {val_loss.item():.4f}")
+        print(f"step: {step}, train_loss: {loss.item():.4f}, train_ppl: {torch.exp(loss).item():.2f}, val_loss: {val_loss.item():.4f}, val_ppl: {torch.exp(val_loss).item():.2f}")
 
 TOP_K = 50
 TOP_P = 0.9
