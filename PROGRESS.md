@@ -5,8 +5,8 @@
 ## 📍 当前位置
 
 - **已完成**：第 1-7 课（基础）+ 第 9-11 课（KQV/Embedding/Block/完整 GPT/训练生成）= 里程碑 M0-M5
-- **进行中**：M6 生成质量+评估（采样全章收官 ✅：temperature/top-k/top-p/封装，剩 perplexity/beam search/训练工程细节）
-- **下次上课**：**M6 剩下**——perplexity 困惑度 + beam search + 训练工程细节（AdamW/warmup/CE vs MSE/LN vs BN）+ infra 点
+- **进行中**：M6 生成质量+评估（采样全章 ✅ + 评估全章 ✅：perplexity/beam search，剩训练工程细节 AdamW/warmup/CE vs MSE/LN vs BN）
+- **下次上课**：**M6 剩下**——训练工程细节（AdamW/warmup/CE vs MSE/LN vs BN/Pre-LN vs Post-LN/GELU vs SwiGLU/residual）+ infra 点
 
 ## 📊 进度仪表盘
 
@@ -15,7 +15,7 @@
 [███░░░░░░░░░] 33%
 三条目标线：A 通晓大模型 / B 通晓 agent / C 通晓 AI infra（2026-08-08 新增）
 
-下次：M6 剩余（perplexity/beam search/训练工程细节 + infra：PagedAttention/gradient checkpointing/profiling）— 采样全章 ✅（temperature + top-k + top-p + 封装）
+下次：M6 剩余（训练工程细节 AdamW/warmup/CE vs MSE/LN vs BN + infra：PagedAttention/gradient checkpointing/profiling）— 采样 ✅ + 评估 ✅（perplexity/beam search）已搞定
 最终毕业：M15 完整 agent + 框架对照
 ```
 
@@ -165,6 +165,25 @@ next_char = torch.multinomial(probs, 1)    # 全尺寸抽样 → 直接拿真 to
 
 **采样全章收官** ✅（temperature + top-k + top-p + 封装 + 对照实验）
 - 思考题已答：`multinomial(probs2)` 给真 token 因为全尺寸索引对齐词表，`multinomial(v)` 给"第几名"（名次是孤儿，需 idx 翻译）——学生用"位子即身份，名次是孤儿"概括
+
+### 📝 M6 第 2 课：perplexity 困惑度 + beam search（2026-08-09，评估全章收官 ✅）
+**perplexity 困惑度**——把抽象 loss 翻成"等效选项数"：
+- 公式推导（学生追问"凭啥 e^loss 表示困惑"，从零推）：`loss = -ln p` → `p = e^(-loss)` → `1/p = e^loss`。用 e 是因为 loss 用 ln 算，底必须配对（若 log10 就用 10^loss）
+- 直觉：困惑度 = "模型每猜一个字符，心里还在纠结几个选项"。词表 65 纯瞎猜 ppl=65；模型 ppl≈10 = 把 65 选 1 压成 10 选 1
+- 代码：训练日志加 `torch.exp(loss)` 打 train_ppl/val_ppl，工业界缩写 `ppl`
+- 实测：val_loss 2.41 → val_ppl 11.18（公式落地 ✓）；train_ppl 10 vs val_ppl 11 差距小 = 未过拟合
+- 口算验证：val_loss 降到 1.5 → e^1.5 ≈ 4.48（ppl 砍半 = 质变）
+- **面试陷阱**：困惑度只能在"同 tokenizer + 同语料"内部比。字符级 65 词表 vs BPE 5万词表，同 ppl=10 含金量天差地别（M7 BPE 时再印证）
+
+**beam search 理论**（只讲不实现——大模型时代投入产出比差）：
+- 核心：K 条路并行，每步算累计概率，留前 K 名（beam width，常用 K=4）——本质是"K 个 greedy 并行跑，最后挑总概率最高"
+- 和采样的本质区别：**beam search 是确定性的**（全程 argmax 比大小，不抽签），采样是随机的（multinomial）。greedy = K=1 的 beam search
+- 一步最优 ≠ 全局最优：采样只看当前步，beam 看几步累计——能救"第一步选错"的小模型
+- 代价：计算量 ≈ 采样的 K 倍，要质量(翻译/代码补全) vs 要速度(聊天/流式) 的权衡
+- **大模型时代被打入冷宫**（三原因）：①大模型单步够准 beam 救不了多少 ②beam 总挑最高概率路 → 生成平庸无创意 ③和 instruction following 不兼容，严格按概率走反而不听话。GPT/Claude/DeepSeek 默认采样，API 的 beam_search 参数基本是摆设
+- 面试一句话：K 条路并行累积概率、每步留前 K、确定性解码；小模型翻译时代标配，大模型时代被采样取代
+
+**评估全章收官** ✅（perplexity + beam search）
 
 ### Block 完整结构（学生已实现）
 ```
