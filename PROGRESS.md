@@ -265,6 +265,14 @@ x ──→ ln1 ──→ attention ──→ + ──→ x1
 - 关键坑：block 里 `mask = torch.ones(..., device=x.device)` 必须带 device 参数，否则 score 在 cuda、mask 在 cpu 报设备不匹配
 - 训练数据已换成完整莎士比亚（100万字符），GPU 真正发力，100000 步训练 loss 从 4.5 → 2.5
 
+### M8 SFT 环境清单（✅ 2026-08-09 已就绪）
+- torch 2.11.0+cu128 / transformers 5.14.1 / accelerate 1.14.0
+- datasets 5.0.1（SFT 数据加载）/ bitsandbytes 0.50.0（int4 量化，Win+sm_120+Py3.14 官方支持）
+- peft 0.20.0（M9 LoRA 备用）/ tiktoken 0.13.0（M7 已装）/ safetensors 0.8.0
+- ⬜ 待下载：Qwen3-0.6B 模型权重（M8 开课时下，几百 MB）
+- ⬜ 待准备：SFT 指令数据集（M8 开课时选）
+- 注：`triton not found` warning 无视，只影响 flop 计数，不影响训练/推理
+
 ## 📝 第 11 课重大进展（2026-08-04）
 
 学生在别的 AI 学了大量内容，代码从"散装 attention"跃进到**完整可训练 GPT**：
