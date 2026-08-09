@@ -280,6 +280,28 @@ x ──→ ln1 ──→ attention ──→ + ──→ x1
 - tokenizer 已下到 `F:/study/big_model/models/Qwen3-0.6B/`（config/vocab/merges/tokenizer.json 共 ~14MB）
 - 权重走 `from_pretrained` 下到 `F:/study/big_model/models/_hf_cache/`
 - **datasets 二次 load 卡 HEAD 校验**：load_dataset 直连 HF 校验版本超时 → 解法 `HF_DATASETS_OFFLINE=1 HF_HUB_OFFLINE=1` 离线读缓存。**训练脚本里加这两行环境变量保险**
+- ⚠️ **离线开关必须在 `import datasets/transformers` 之前设**：库在 import 那一刻就读死开关，后设无效（学生踩过：先 import 再设 env，照样联网超时）。lesson13_sft.py 顶部已按"先 env 再 import"顺序排好
+
+### 📝 M8 SFT Lesson 2：Alpaca 数据格式化（2026-08-09，进行中）
+**目标**：把 Alpaca 一条数据打扮成 Qwen3 认识的 chat 格式，为 loss masking 做准备。
+
+**5 步走（每步一小块）**：
+1. ✅ **加载 Alpaca 数据**：`load_dataset("shibing624/alpaca-zh")` → 48818 条；`ex["instruction"/"input"/"output"]` 三字段。`input` 可为空（附加材料）
+2. ✅ **拼对话 + apply_chat_template**：`messages=[{user},{assistant}]` → `tokenizer.apply_chat_template(messages, tokenize=False)` → 带标记文本。Qwen3 格式 = `<|im_start|>user\n...<|im_end|>\n<|im_start|>assistant\n...<|im_end|>`
+3. 🔄 **tokenize + loss masking**（下一步）：`tokenize=True` 出 143 个 token；assistant 头 = `[151644, 77091, 198]`（`<|im_start|>assistant\n`）；要在序列里搜这串定位"答案起点"，之前全标 `-100`
+4. ⬜ **SFT 训练循环**：forward → loss（跳 -100）→ backward → AdamW step
+5. ⬜ **对比验证**：训前"死循环不答天气" vs 训后"正常回答 + `<|im_end|>` 收尾"
+
+**概念已讲清**：
+- `apply_chat_template` = 把社区通用的 `messages` 字典翻译成 Qwen 自家的 `<|im_start|>` 标记格式（翻译规则焊在 tokenizer 里，换 Llama 就完全不同）
+- loss masking = "老师只改答案不改题目"：问题/角色标记/思考开关标 `-100`（PyTorch CE 约定跳过），答案正文 + `<|im_end|>` 留真 id（算 loss）
+- **微调本质**：权重不是焊死的，596M 数字可继续改；Qwen3-0.6B 出厂对齐薄弱（死循环重复症状），SFT 用 48818 条加固"听指令→答"反应。训练量比预训练小几万倍
+- **loss 形状链**：`logits(batch,seq,vocab)` → 比真词取 log → `loss_per_token(batch,seq)`（vocab 维"挑真词后整维消失"，不是剩 1）→ 跳 -100 取平均 → 标量 loss
+- Qwen3 是"先想后答"模型，token 里有 `...` 思考开关（151667/151668）；Alpaca 数据无思考内容，该位置为空
+
+**踩坑**：
+- 离线 env 顺序错（见上节）
+- apply_chat_template 后忘了 `print(text)` 导致以为没输出
 
 ## 📝 第 11 课重大进展（2026-08-04）
 
