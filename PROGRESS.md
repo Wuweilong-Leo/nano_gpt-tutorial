@@ -5,8 +5,8 @@
 ## 📍 当前位置
 
 - **已完成**：第 1-7 课（基础）+ 第 9-11 课（KQV/Embedding/Block/完整 GPT/训练生成）= 里程碑 M0-M5
-- **进行中**：M6 生成质量+评估（采样全章 ✅ + 评估全章 ✅：perplexity/beam search，剩训练工程细节 AdamW/warmup/CE vs MSE/LN vs BN）
-- **下次上课**：**M6 剩下**——训练工程细节（AdamW/warmup/CE vs MSE/LN vs BN/Pre-LN vs Post-LN/GELU vs SwiGLU/residual）+ infra 点
+- **进行中**：M6 生成质量+评估+训练工程细节速查卡全部收官 ✅（采样 + perplexity + beam search + 训练工程细节概念）。训练工程细节深挖遗留到 M8 SFT
+- **下次上课**：**M7 BPE + 中文**——从字符级升级到子词级 tokenizer，解锁中文和真实大模型词表
 
 ## 📊 进度仪表盘
 
@@ -15,7 +15,7 @@
 [███░░░░░░░░░] 33%
 三条目标线：A 通晓大模型 / B 通晓 agent / C 通晓 AI infra（2026-08-08 新增）
 
-下次：M6 剩余（训练工程细节 AdamW/warmup/CE vs MSE/LN vs BN + infra：PagedAttention/gradient checkpointing/profiling）— 采样 ✅ + 评估 ✅（perplexity/beam search）已搞定
+下次：M7 BPE + 中文（字符级 → 子词级 tokenizer，解锁中文和真实大模型词表）— M6 全章收官 ✅（采样/评估/训练工程细节速查卡）
 最终毕业：M15 完整 agent + 框架对照
 ```
 
@@ -184,6 +184,24 @@ next_char = torch.multinomial(probs, 1)    # 全尺寸抽样 → 直接拿真 to
 - 面试一句话：K 条路并行累积概率、每步留前 K、确定性解码；小模型翻译时代标配，大模型时代被采样取代
 
 **评估全章收官** ✅（perplexity + beam search）
+
+### 📝 M6 第 3 课：训练工程细节速查卡（2026-08-09，概念遗留到 M8 SFT 再深挖）
+**教学反馈修正**：学生两次提醒"太细节了"——Adam 内部公式、AdamW 解耦数学、warmup 代码实现等**公式层/数值层**内容，学生不用懂。已写入教学记忆：以后每讲点前先问"写代码/面试用得上吗"，都用不上就一句话带过。该懂的层次：用法层 ✅ + 直觉层 ✅，公式层 ❌。
+
+**已完成代码改动**：`torch.optim.Adam` → `torch.optim.AdamW(lr=3e-4, weight_decay=0.1)`（大模型标配，commit 见 git log）
+
+**速查卡（以后回来翻）**：
+| 点 | 是什么 | 为什么 | 一句话面试版 |
+|---|---|---|---|
+| **AdamW vs Adam** | W = 解耦的 weight decay | 老 Adam 把 wd 塞进梯度被 ÷√v 搞乱，AdamW 拎出来单独减 | 大模型全用 AdamW，weight decay 力度干净、调参解耦 |
+| **Warmup** | 开局 lr 从 0 慢升到目标值 | 训练初期参数随机，大步走会崩 | 大模型不 warmup 直接 NaN，nanoGPT 标配 2000 步 |
+| **CE vs MSE** | 交叉熵 vs 均方误差 | 分类用 CE（梯度有劲+概率语义对），MSE 有梯度消失 | 分类用 CE，回归用 MSE，GPT 预测下个 token 是分类 |
+| **LN vs BN** | LayerNorm 沿特征维 / BatchNorm 沿 batch 维 | GPT 序列长度可变、推理 batch=1、自回归不能跨样本 | GPT 用 LN 不用 BN，每个样本自己归自己 |
+| **Pre-LN vs Post-LN** | LN 在变换前 / 变换后 | Pre-LN 残差通路直通，梯度流畅，深层稳训 | GPT-2 后主流 Pre-LN，原版 Transformer 是 Post-LN |
+| **GELU vs SwiGLU** | GELU 是激活函数 / SwiGLU 是门控激活 | SwiGLU = Swish 门控 + 线性投影，LLaMA/Qwen 用，性能更好 | 新模型用 SwiGLU，老 GPT 用 GELU，你代码是 GELU |
+| **Residual** | 残差连接 `output = 变换(x) + x` | 梯度直通深层的"高速公路"，否则深层训不动 | 残差是深网的命脉，每层都加，你 Block 里 2 处 +x_base |
+
+**遗留到 M8 SFT 时再深挖**：warmup 代码实现、AdamW 调参、CE 公式推导、SwiGLU 切换。现在懂"是什么+为什么用它"即可。
 
 ### Block 完整结构（学生已实现）
 ```

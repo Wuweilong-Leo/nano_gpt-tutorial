@@ -126,7 +126,7 @@ BLOCK_SIZE = 128
 chars = sorted(set(text))
 VOCAB_SIZE = len(chars)
 model = GPT(VOCAB_SIZE, BLOCK_SIZE, hidden_size=1024, n_head=16, n_layers=12)
-optimizer = torch.optim.Adam(model.parameters(), lr=3e-4)
+optimizer = torch.optim.AdamW(model.parameters(), lr=3e-4, weight_decay=0.1)
 stoi = {c: i for i, c in enumerate(chars)} # 形成字典 字符-》索引
 itos = {i: c for c, i in stoi.items()} # 形成字典，索引=》字符（注意 stoi 是 字符→索引，反转时解包成 c, i）
 data = [stoi[c] for c in text] # 对于字符串里的每个字符形成索引
