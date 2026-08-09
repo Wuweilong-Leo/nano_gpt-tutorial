@@ -269,9 +269,17 @@ x ──→ ln1 ──→ attention ──→ + ──→ x1
 - torch 2.11.0+cu128 / transformers 5.14.1 / accelerate 1.14.0
 - datasets 5.0.1（SFT 数据加载）/ bitsandbytes 0.50.0（int4 量化，Win+sm_120+Py3.14 官方支持）
 - peft 0.20.0（M9 LoRA 备用）/ tiktoken 0.13.0（M7 已装）/ safetensors 0.8.0
-- ⬜ 待下载：Qwen3-0.6B 模型权重（M8 开课时下，几百 MB）
-- ⬜ 待准备：SFT 指令数据集（M8 开课时选）
+- ✅ Qwen3-0.6B 权重（models/_hf_cache/，596M 参数，加载验证通过）
+- ✅ Alpaca-zh 数据集（data/_hf_cache/，48818 条中文指令对，字段 instruction/input/output）
 - 注：`triton not found` warning 无视，只影响 flop 计数，不影响训练/推理
+
+**下载模型踩坑（2026-08-09，国内必看）**：
+1. `snapshot_download` 直连 HF → ConnectTimeout（国内被墙）
+2. `HF_ENDPOINT=https://hf-mirror.com` 镜像 → tokenizer 文件能下，但 **.safetensors 权重卡 401 Unauthorized**，因新版 HF 用 xet 分片存储（cas-server.xethub.hf.co），镜像绕不过鉴权
+3. **解法**：用 `transformers.AutoModelForCausalLM.from_pretrained(repo_id, cache_dir=...)` 走老接口，绕开 xet；配 `HF_ENDPOINT=hf-mirror.com` 加速。权重走老接口下，tokenizer 也一并下全
+- tokenizer 已下到 `F:/study/big_model/models/Qwen3-0.6B/`（config/vocab/merges/tokenizer.json 共 ~14MB）
+- 权重走 `from_pretrained` 下到 `F:/study/big_model/models/_hf_cache/`
+- **datasets 二次 load 卡 HEAD 校验**：load_dataset 直连 HF 校验版本超时 → 解法 `HF_DATASETS_OFFLINE=1 HF_HUB_OFFLINE=1` 离线读缓存。**训练脚本里加这两行环境变量保险**
 
 ## 📝 第 11 课重大进展（2026-08-04）
 
