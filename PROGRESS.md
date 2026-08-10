@@ -456,6 +456,28 @@ attention 计算 `score[i][j] = q[i]·k[j]` 只用内容、不用位置 → 同�
 
 **不开第三项目**（Haiku 同意老师判断）：DDP 租云不必要（toy 实现已够面试）；HF Spaces 是项目B 的可选 stretch 不算新项目。
 
+### 🔧 msmodeling 素材库（2026-08-09 定稿·与 2 个 agent 评审后修订）
+
+**背景**：`F:/study/big_model/msmodeling/`（华为昇腾推理性能仿真器，21.5MB，1452 文件，已 clone，独立 git 仓库）。不融进 M6/M8（M6 彩蛋砍掉——与"M8 不插"自相矛盾；M8 SFT 是训练话题，msmodeling 是 infra 话题）。**M10-M12 当"顶级教具"用，每次只啃 2-3 个函数**。
+
+**评审定稿要点（2 agent 批判后修订）**：
+- ❌ **采样融入点作废**：曾以为 `tensor_cast/layers/sampler.py` 有工业级 top-k/top-p → 实际是 greedy argmax + 投机解码元数据（TODO 注释"add top-k/top-p"），无任何采样实现。已删。
+- ❌ **qwen3_*.py 不是算法本体**：那些文件只是模型注册桩 + meta-tensor 补丁，真实实现在 HF transformers。自包含素材 = `layers/mla.py`（686行）/`moe_layer.py`（687行）/`mtp.py`（196行）核心 forward。
+- ✅ 排除理由修正：课程相关文件**无** torch_npu/cann 导入，难点是 meta-tensor 仿真范式纠缠，不是"偏昇腾硬件"。
+- ✅ 通用规则：**阅读范围守卫**（只读 2-3 函数+跳过段+5 分钟动手验证+卡住退回类比）、**逃生通道**、**仿真器当教具不当阅读材料**（M10 跑一次"先猜后看"demo）。
+
+**M10-M12 融入表（素材就绪，到时按此取用）**：
+
+| 课 | msmodeling 文件 | 教什么 |
+|---|---|---|
+| **M10 推理加速** | `serving_cast/kv_cache_manager.py`（BLOCK_SIZE=128、allocate_slots/free 两函数） | ①先在自己 nanoGPT 手写 KV cache → ②对照 128-block 管理 → ③`engine.py` BatchScheduler（waiting/running 队 + token budget + 抢占重算 + chunked prefill）讲 continuous batching |
+| M10 加分 | `engine.py` 异步 KV 传输（device2device_async） | DCP/disagg 推理入门素材 |
+| M10 加分 | `tensor_cast/performance_model/`（analytic.py + bound_analyzer.py OpBoundClassifier + memory_tracker.py） | memory-bound/compute-bound 分类（roofline 直觉） |
+| M11 量化 | `tensor_cast/quantize_utils.py`（W8A16/W8A8/W4A8/FP8/MXFP4 全类型）+ `layers/quant_linear.py` 的 QuantLinearBase（模拟量化路径，**不碰** TensorCastQuantLinear 自定义算子）+ pack/unpack_int4 + per-tensor/group 粒度 | 量化类型全景；W8A16 正好讲"权重量化多激活少" |
+| M11 架构进阶 | **只 RoPE 进正课**（`layers/rotary_embedding.py` cos/sin 缓存 + mla.py rotate_half）;MoE/MLA/MTP 降为选读+一句类比（专家分工/一次猜多词），素材指向 mla.py/moe_layer.py/mtp.py | RoPE 深讲，其余"行业地图"扫盲 |
+| M12 分布式 | 只 `tensor_cast/pipeline_parallel.py` 切分逻辑;`parallel_group.py` 不碰（样板代码）;TP 讲"把矩阵劈开"一句带过;可选 comm_analytic.py 通信耗时建模 | 流水线并行怎么切 |
+| 不融入 | meta-tensor 仿真基建（patch_torch.py/compilation/）、optix 吞吐寻优（教学价值低因话题错位非硬件耦合）、model_hub.py（下载工具） | — |
+
 **核心主线一句话**：你不是在学一堆散件，你是在造一个 agent——只是先把每个零件搞懂。tokenizer=agent 听懂人话的前提，KV cache=agent 响应快的前提，SFT=agent 听指令的前提，采样=agent 多样性的前提。但注意：这条主线是**学习动机**，不是"砍掉用不到的知识"——通晓大模型的所有知识点都要学，主线只是帮你理解每个知识点最终怎么在 agent 里发挥作用。
 
 **设计原则**：理论课与实战交织，**增量构建**——每课从 0 写 20-30 行，下课必须能跑出结果。架构进阶不搞名词轰炸（只 RoPE 深讲，其余压成"行业地图"扫盲）。agent 阶段**先手写禁框架**，框架对照放最后。
