@@ -41,8 +41,15 @@
 
 **step4 预告(下下步)**:SFT 训练循环——batch 多条数据、只取答案部分算 loss、`loss.backward()`、AdamW step。
 
-### 待补事项(记着,不紧急)
-- 无(2026-08-10:M6 +0.5 infra 眼镜课已补)
+### 待补事项(M6 欠账,不紧急但面试会考)
+
+**① 训练工程实战批(AMP 是重点,建议跟 M8 step4 训练循环一起补)**:
+- **AMP 三组对比**(fp32 / fp16+GradScaler / bf16):面试高频"fp16 为啥要 loss scaling、bf16 不要";在 nanoGPT 上加,对比显存+loss 稳定性
+- gradient checkpointing(加 nanoGPT 对比显存)、torch.compile(对比 step 时间)、profiling(torch profiler)
+
+**② 训练工程概念批**:Adam vs AdamW 深挖、warmup+cosine、CE 为啥不用 MSE、梯度裁剪
+
+**③ 面试细节批**:LN vs BN、Pre/Post-LN、残差原理、MLP 为啥 4×、GELU vs SwiGLU
 
 ---
 
