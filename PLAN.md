@@ -3,7 +3,7 @@
 > **本文件是"现在教到哪"的唯一入口。** 任何 AI / 老师接手课程,先读本文件,30 秒即可继续教。
 > 历史细节、踩坑原委、回顾材料 → 看 `PROGRESS.md`(本文件的详细档案版)。
 
-**最后更新:2026-08-10**
+**最后更新:2026-08-12**
 
 ---
 
@@ -61,6 +61,7 @@
 | M6 | 采样+评估+训练工程 | ✅ 完成(+0.5 infra 眼镜已补) | 2026-08-09 收官 |
 | M7 | BPE+中文 token 对比 | ✅ 完成 | 2026-08-09 收官 |
 | **M8** | **SFT 指令微调** | 🔄 **进行中** | Qwen3-0.6B + Alpaca-zh |
+| M8.5 | 大模型端到端执行流(文件→logits 七站) | 📋 方案定稿待教 | 见 §7️⃣;M8 step3 后再开 |
 | M9 | LoRA | ⬜ 待学 | |
 | M10 | 推理加速(KV cache/连续batching/PagedAttention) | ⬜ 待学 | 素材:msmodeling |
 | M11 | 量化 + 架构进阶(RoPE 深讲,MoE/MLA/MTP 扫盲) | ⬜ 待学 | 素材:msmodeling |
@@ -148,9 +149,39 @@ assistant 头三连: [151644, 77091, 198]
 
 ---
 
-## 7️⃣ 已讲课程内容速查(怕忘)
+## 7️⃣ M8.5 教学方案:大模型端到端执行流(已定稿,待教)
+
+> **定位**:M8(SFT)之后、M9(LoRA)之前;前置是 M8 step3 收尾。时长 2~3 次课,一次一站,学生贴输出为过关信号。
+> **可移植原则(接手 AI 必守)**:源码参考只写"获取命令 + 包内相对路径",**绝不写本机绝对路径**;接手先跑"30 秒自检脚本"。
+
+**总地图**:磁盘文件 →①加载→ 内存 model →②tokenizer→ input_ids →③画图→ 96 节点 →④优化→ 84 节点 →⑤生成→ 内核序列 →⑥运行时调度→⑦执行→ logits
+
+| 站 | 目标一句话 | 可变移植源码参考(怎么得到/怎么找) |
+|---|---|---|
+| ① 加载 | config 如何决定一个模型;登记簿→门卫→搭壳→填数 | pip 装 transformers;包内 `models/auto/modeling_auto.py`(grep `"qwen3"`)、`models/auto/auto_factory.py`(`_get_model_class`)、`models/qwen3/modeling_qwen3.py`(Qwen3Model `__init__` 的 `range(config.num_hidden_layers)`)、`modeling_utils.py`(load_state_dict)。已讲:6 站链路见 PROGRESS |
+| ② tokenizer | 文本→id;三件套分工;encode 四步;词表=训练产物 | 模型目录内 `tokenizer.json`(`model.merges`/`model.vocab`/`added_tokens_decoder`);transformers 包内 `tokenization_utils_base.py`(入口);底层 BPE 在 Rust `tokenizers` 库(本地只有 .pyd,源码看 GitHub huggingface/tokenizers) |
+| ③ 画图 | 套娃→摊平清单;节点=一次动作;96=拆账 | torch 包内 `_dynamo/`(export)、`fx/`(老式 tracer 为何失败做对照);教具 `my_gpt/ai_compiler_test.py`(已跑通:Qwen 一层 96 节点) |
+| ④ 优化 | 图上手数学不变的手脚;模式匹配;融合=小组件→大内核;96→84 | torch 包内 `_inductor/pattern_matcher.py`(融合规则);教具 `my_gpt/_fusion_check.py`(已跑通:4 处 Norm 指纹) |
+| ⑤ 生成 | lowering 表:图→tiling/循环→指令;拆→合→再拆 | `pip install triton`(本机未装,接手机器要装;装不上就纯概念讲);torch 包内 `_inductor/codegen/` |
+| ⑥ 运行时调度 | 内核排队/显存池/多请求调度;**真现象用 PyTorch,真算法用 msmodeling,工业真身 vLLM** | PyTorch 演示:分配→释放→`torch.cuda.memory_reserved()` 不掉(显存池);msmodeling(任何机器 `git clone https://gitcode.com/Ascend/msmodeling`)内 `serving_cast/engine.py` BatchScheduler + `kv_cache_manager.py`(**仿真:算法真、执行假,只教概念**);vLLM `vllm/core/scheduler.py`(线上看,不下载) |
+| ⑦ 执行 | 一次生成多次执行;generate 循环 | transformers 包内 `generation/utils.py` 的 `generate`(采样循环);顺带做掉 M6 欠账 `torch.compile` 对比 |
+
+**30 秒自检脚本(接手必跑)**:
+```python
+import sys, pathlib, torch, transformers, tokenizers, importlib.util
+print("python:", sys.executable)
+print("torch:", torch.__version__, "| cuda:", torch.cuda.is_available())
+print("transformers:", transformers.__version__, "|", pathlib.Path(transformers.__file__).parent)
+print("tokenizers:", tokenizers.__version__, "|", pathlib.Path(tokenizers.__file__).parent)
+print("triton:", importlib.util.find_spec("triton") is not None)
+```
+
+**衔接**:M9 LoRA=站①的加载玩法;M10 推理加速=站④⑤⑥的底层直觉;M6 欠账 torch.compile=站⑦。
+
+## 8️⃣ 已讲课程内容速查(怕忘)
 
 - **M6**(完成):temperature/top-k/top-p 采样(手写 pipeline + 封装)、perplexity、beam search 概念、训练工程速查(warmup/AdamW/AMP 概念遗留 M8)
 - **M6 补课 infra 眼镜**(2026-08-10 补):朴素 KV cache → 碎片问题 → PagedAttention 分页(block table ~ 操作系统虚拟内存)→ 对照 msmodeling kv_cache_manager(BLOCK_SIZE=128, allocate_slots/free, req_blocks=页表)
 - **M7**(完成):BPE 原理(byte-level、频次合并)、tiktoken 实操、"你好" vs 英文 token 数、Qwen3 tokenizer 中文友好(你好=1 token)
 - **M8 Lesson1**(完成):加载 Qwen3-0.6B 权重、验证生成("死循环重复"症状= SFT 动机)、fp16/device_map="auto"
+- **M8.5 前传**(2026-08-12,完成):模型交付件四件套(config/tokenizer三件套/generation_config/safetensors);加载 6 站链路(登记簿 modeling_auto → 查表 auto_factory → import modeling_qwen3 → 搭壳 → 填 311 权重);tokenizer 三件套职责+encode 四步(词表=训练产物,推理只查不建,merges.txt 用排序定切分);AI 编译器主线:画图(dynamo.export,Qwen 一层 96 节点,已跑通教具 ai_compiler_test.py)→ 优化(模式匹配 4 处 Norm 指纹 96→84,已跑通教具 _fusion_check.py)→ 生成 → 运行时调度;节点=一次动作、图=调度员视图非最底层、msmodeling 调度=仿真(算法真执行假)
