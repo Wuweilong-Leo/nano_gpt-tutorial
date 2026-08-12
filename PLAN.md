@@ -62,6 +62,7 @@
 | M7 | BPE+中文 token 对比 | ✅ 完成 | 2026-08-09 收官 |
 | **M8** | **SFT 指令微调** | 🔄 **进行中** | Qwen3-0.6B + Alpaca-zh |
 | M8.5 | 大模型端到端执行流(文件→logits 七站) | 📋 方案定稿待教 | 见 §7️⃣;M8 step3 后再开 |
+| M8.6 | 手写迷你 AI 编译器(影子版) | 📋 方案定稿待教 | 见 §7️⃣;依赖 M8.5 ③④ 经验 |
 | M9 | LoRA | ⬜ 待学 | |
 | M10 | 推理加速(KV cache/连续batching/PagedAttention) | ⬜ 待学 | 素材:msmodeling |
 | M11 | 量化 + 架构进阶(RoPE 深讲,MoE/MLA/MTP 扫盲) | ⬜ 待学 | 素材:msmodeling |
@@ -177,6 +178,21 @@ print("triton:", importlib.util.find_spec("triton") is not None)
 ```
 
 **衔接**:M9 LoRA=站①的加载玩法;M10 推理加速=站④⑤⑥的底层直觉;M6 欠账 torch.compile=站⑦。
+
+### 🔧 M8.6 教学方案:手写迷你 AI 编译器(影子版,已定稿)
+
+> **定位**:M8.5 之后、M9 之前。**参考书**:tinygrad(github.com/tinygrad/tinygrad,线上读,每文件只读 2-3 个关键函数)。**产物**:`my_gpt/mini_compiler/` ~250 行,5 个文件。原则:一次一小步、学生写代码、每步贴输出过关。
+
+| 步 | 目标 | 知识点 | tinygrad 参考 | 过关输出 |
+|---|---|---|---|---|
+| ① 摸地形 | 认识编译器源码 | 节点 = op+输入列表+参数(记账单位) | `_ops.py` 算子表;`lazy.py` 节点类 | 口述节点记录了什么 |
+| ② 定 IR | 自己设计图的表示 | SSA、Op 表、Node 类;IR=编译器地基 | 对照 `_ops.py` 设计 Op 表 | `ir.py` 手工造 RMSNorm 指纹 5 节点打印成功 |
+| ③ 写前端 | 文本→图 | 每行一指令的迷你语言(`%2 = mul %0, %1`),解析=按行拆词 | (tinygrad 无前端,用 Python API;我们对齐 LLVM 教程补上) | `parse.py`:文本→图,节点数正确 |
+| ④ 优化管线 | 三个 pass 串起来 | 融合(指纹→rms_norm)/死代码消除/常量折叠;pass=图遍历+改写 | `engine/scheduler.py` 遍历重排 | 每 pass 前后打印节点数,样例 7→3 |
+| ⑤ 后端+验收 | 图→可执行指令 | 图→VM 指令(LOAD/CALL/STORE),numpy 实现执行 | `engine/realize.py` | 数值对拍:直跑 vs 编译后跑一致;真实接入:Qwen 96 节点图→融合 pass→84 |
+
+**验收约定**(诚实分层):结构对拍(节点数 96→84)用真模型(dynamo 导出 + adapter 40 行);数值对拍用自己样例(VM op 集不全,权重大数据不进 VM)。
+**钩子**:M8.5 的 96 节点图/融合脚本=输入和参考答案;M10 学 TVM/inductor 有体感;面试口径:"手写过迷你编译器:SSA IR、fusion/DCE/常量折叠、VM 后端,接入了 dynamo 导出的真实模型图"。
 
 ## 8️⃣ 已讲课程内容速查(怕忘)
 
