@@ -7,10 +7,9 @@
 
 - **已完成**：第 1-7 课（基础）+ 第 9-11 课（KQV/Embedding/Block/完整 GPT/训练生成）= 里程碑 M0-M5
 - **进行中**：M8 SFT(主线,M8 Lesson2 step3 卡在"切割线定位函数",暂时搁置)；
-  **M8.6 手写迷你编译器支线**(①②③④ ✅ 全部过关,融合 pass `fuse` 8→3 稳定跑通,两个 TODO 填完)
-- **下次上课**：**M8.6 第⑤步方向待学生拍板**——④ 已收尾,但 ⑤「后端/lowering」该走哪条路学生没定。
-  核心诉求是"看懂 AI 编译器怎么把大模型转成一个个内核",且要代码当拐杖(纯概念吸收不了)。
-  推荐路线 B:写 `lower_c.py`(迷你版 emit C 循环代码)→ 紧接着对照真 `torch._inductor.codegen` 的 Triton 输出并排看。
+  **M8.6 手写迷你编译器支线**(①②③④ ✅ 过关;⑤ 路线 B 已定,`lower_c.py` 已写完跑通,下一步对照真 inductor 的 Triton)
+- **下次上课**：**M8.6 ⑤ 路线 B 收尾**——`lower_c.py` 已 emit 出两份 C 代码(原始 8 节点 3 循环 vs 融合 3 节点 2 循环,看到融合省循环)。
+  下一步:学生跑 `torch.compile` 让真 inductor 生成 Triton 内核,和迷你版 C 代码并排对照,直击"看懂大模型怎么转内核"。
   **详见 PLAN §7️⃣ 末尾「⚠️ 接力交接」**。
 
 ## 📊 进度仪表盘
@@ -704,27 +703,40 @@ for want in chain:
 
 **`remove_dead_nodes` 是学生自己写的**(上一棒审过):从出口 `outputs=["y"]` 出发,`alive`+stack 反向遍历,返回字典。在这张测试图上删不了东西(没死节点),真活儿是 fuse 干的——但 DCE 是给"有废分支"的图准备的,概念到位。
 
-### ⚠️ ⑤ 后端方向:接力交接(2026-08-13,给下一棒 AI)
+### ⚠️ ⑤ 后端路线 B 已定,lower_c.py 已跑通(2026-08-14,给下一棒 AI)
 
-**④ 已完全收尾**,①②③④ 四步过关。但 ⑤「后端/lowering」该走哪条路,**学生没拍板**——这是下节课第一件事。
+**④ 已完全收尾**,①②③④ 四步过关。**⑤ 方向学生已拍板 = 路线 B**(迷你版 + 真版并排),不再悬而未决。
 
 **学生两个硬要求**(上棒踩出来的):
 1. 核心诉求是"看懂 AI 编译器怎么把大模型转成一个个内核"(不是造玩具)
 2. 纯概念吸收不了,要代码当拐杖
 
-**三条候选路线**(推荐 B,理由见 PLAN §7️⃣ 末尾):
-- A. 造完迷你版 ⑤a/⑤b/⑤c(树遍历→线性VM→emit C→tiling 概念):长,离真内核远,学生之前嫌"简化太多"
-- **B. 迷你版停在 ④,转"迷你+真版并排"(推荐)**:写 `lower_c.py`(emit 嵌套循环 C 字符串)→ 立刻打开真 `torch._inductor.codegen` 看 Triton 输出并排对比
-- C. 跳过迷你 ⑤ 直接读真 inductor:太抽象,学生吸收不了(已验证)
+**B 当前进度:`lower_c.py` 已写完跑通** ✅
+- 文件 `mini_compiler/lower_c.py`(上一棒 AI 写,桥梁性质非练习题,学生看懂可改)
+- 做的事:把融合图(3节点)和原始图(8节点)分别 emit 成 C 循环代码字符串
+- 跑通输出(关键教学点):
+  - 原始图 emit **3 个 for 循环**(POW / MEAN累加 / MUL)
+  - 融合图 emit **2 个 for 循环**(POW+MEAN 合一 / MUL)
+  - **直观看到:融合省循环 = 省内核 = 省启动开销**。这就是 ④ 融合在后端的回报,学生亲眼确认
+- 迷你版 vs 真内核差距(诚实标注):迷你版 `for(i)` 串行 vs 真版 `tl.program_id` 并行;`x[i]` vs `tl.load`+共享内存;单 kernel vs grid/block tiling。骨头一样(循环+访存+算),词汇/并行度不同
 
-**`lower_c.py` 已设计好**(待 B 确认后写):element-wise→`for(i)y[i]=a[i]+b[i];`,reduce→两层循环,融合 RMSNORM→一循环体五步合一(直观看到融合省循环)。写完对照 inductor codegen 的 Triton(`tl.load/tl.program_id` 替代 `a[i]/for i`,骨头一样词汇不同)。
+**B 下一步(未做,下棒接手第一件事)**:对照真 inductor 的 Triton 内核
+- 让学生写 `see_real_kernel.py`:`@torch.compile def f(x,w): return torch.rsqrt(torch.mean(x*x,dim=-1)+1e-6)*w`,跑一次
+- 去系统 temp 目录(Windows `%TEMP%`)找 `__inductor_*.py` 或 `torchinductor_*` 目录下的 `.py` 文件
+- 打开看 inductor 真生成的 Triton 代码,和 `lower_c.py` 的 C 代码并排对照
+- 目的:学生亲眼看到"我们 emit 的 C 循环 = 真 inductor emit 的 Triton,结构同构",直击"看懂大模型怎么转内核"
+- 注意:本机 cpu torch 能跑 codegen(生成 .py 不需 GPU),但执行编译后内核要 GPU(本机无独显,看代码即可不执行)
 
 **上棒踩的坑(下棒别重蹈)**:
 1. 一度把 VM 定位成"替身跳过 lowering"→ 被学生识破。正确:VM=字节码派后端(Crafting Interpreters 同级),lowering 是教学正餐不跳,真正略过的是"指令→机器码"。
 2. 调研 agent 派子 agent 太多撑爆上下文(100万token)→ 没拿到完整结论。结论凭知识补(CraftInterp=档①栈式无寄存器;tinygrad/TVM=档③带tiling;Kaleidoscope=档③借LLVM),学生认可档①不偷懒。
 3. 学生问过"多链共享中间节点"→ 答案引用计数,讲过不写。
+4. **学生骂过"方案老定不下来"**——根因是上一棒把决策权抛回给学生却没逼定。教训:给推荐 + 逼学生一句话拍板,别开放性反复询问。学生最后确实一句话"B"拍板了,方案立刻定死。
 
-**已验证跑通**:`cd mini_compiler && python passes.py` → 8→3(本机 cpu torch 即可,不需 GPU)。test_prog.txt 仍未写是 step③ 遗留,非阻塞,学生哪天想补再补。
+**已验证跑通**:
+- `cd mini_compiler && python passes.py` → 8→3(④ 融合,本机 cpu torch 即可)
+- `cd mini_compiler && python lower_c.py` → 两份 C 代码对照(⑤ lowering 迷你版)
+- 本机无独显,以上都不需 GPU。test_prog.txt 仍未写是 step③ 遗留,非阻塞,学生哪天想补再补。
 
 ## 📌 备忘
 

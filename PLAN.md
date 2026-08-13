@@ -11,8 +11,8 @@
 
 - **学生**:新手,已手写 nanoGPT(`lesson09_attention.py`,120M/6层/12head,GPU 训练过,loss 4.5→2.5),已学 BPE(M7),正在学 SFT(M8,当前搁置)+ M8.6 迷你编译器支线(进行中)。
 - **环境(这台机器,2026-08-13 新装)**:`D:\ai\nanoGPT_venv`(Python 3.11.9 + torch 2.13.0+cpu + transformers 5.15 + tiktoken/numpy/tqdm/requests)。**无 NVIDIA 独显**(仅 Intel 核显)→ M0-M7/M8.5/M8.6 能跑,**M8 SFT 真训练跑不动**,只能学原理。跑脚本:`PYTHONUTF8=1 /d/ai/nanoGPT_venv/Scripts/python.exe xxx.py`。自检:`verify_env.py`(8 项全过)。
-- **当前进行中**:**M8.6 第④步 · 融合 pass `fuse` 已收尾**(8→3 稳定跑通,两个 TODO 都填完)。下一步待定方向(见 §7️⃣ 末尾「⚠️ 接力交接:方向待学生拍板」)。
-- **学生当前卡在(下节课接着的)**:**④ 融合已过关**,但学生对 ⑤「后端/lowering」的设计方向**未拍板**——核心诉求是"看懂真编译器怎么把大模型转成一个个内核",不想只造迷你玩具。下节课第一件事:跟学生确认走哪条路(A 造完迷你版 / B 迷你版停在融合转看真 inductor / C 别的)。M8 SFT step3 切割线函数仍暂停搁置。
+- **当前进行中**:**M8.6 第⑤步 · 路线 B**(迷你版 + 真版并排)。④ 融合已收尾(8→3),`lower_c.py` 已写完跑通(emit C 循环代码,看到融合省循环)。下一步:对照真 `torch._inductor` 生成的 Triton 内核(见 §7️⃣ 末尾「⚠️ 接力交接」)。
+- **学生当前卡在(下节课接着的)**:`lower_c.py` 看懂后,**跑 `torch.compile` 让真 inductor 生成 Triton 代码,和迷你版 C 代码并排对照**。这是路线 B 的收尾,直击学生核心诉求"看懂大模型怎么转内核"。M8 SFT step3 切割线函数仍暂停搁置。
 - **教学规则(学生明确要求的,违反会被纠正)**:
   1. 代码**学生自己写**,老师只给骨架/hint/解释,绝不代写完整可运行代码
   2. 语法/API 细节直接给答案,不猜谜("这种语法问题可以直接告诉我")
@@ -204,26 +204,34 @@ print("triton:", importlib.util.find_spec("triton") is not None)
 **验收约定**(诚实分层):结构对拍(节点数 96→84)用真模型(dynamo 导出 + adapter 40 行);数值对拍用自己样例(VM op 集不全,权重大数据不进 VM)。
 **钩子**:M8.5 的 96 节点图/融合脚本=输入和参考答案;M10 学 TVM/inductor 有体感;面试口径:"手写过迷你编译器:SSA IR、fusion/DCE/常量折叠、VM 后端,接入了 dynamo 导出的真实模型图"。
 
-### ⚠️ 接力交接:⑤ 后端方向待学生拍板(2026-08-13,上一棒 AI 留)
+### ⚠️ 接力交接:⑤ 路线 B 已定,lower_c.py 已跑通(2026-08-14,上一棒 AI 留)
 
-**④ 已收尾**:`passes.py` 的 `fuse` 8→3 稳定跑通,两个 TODO 填完。`remove_dead_nodes` 学生自己写的,审过。**①②③④ 四步全部过关**,mini_compiler 当前 4 文件:`ir.py`(Op 表+Node)/`parse.py`(文本→图)/`passes.py`(DCE+融合)/`test_prog.txt`(样例)。
+**④ 已收尾**:`passes.py` 的 `fuse` 8→3 稳定跑通,两个 TODO 填完。`remove_dead_nodes` 学生自己写的,审过。**①②③④ 四步全部过关**。
 
-**⑤ 该走哪条路,学生没拍板**——这是下节课第一件事。背景:学生明确说"核心诉求是了解 AI 编译器怎么把大模型转成一个个内核",且"纯概念吸收不了,需要代码当拐杖"。所以 ⑤ 不能是纯讲解,也不能是闷头造迷你 VM(造到 lowering 档位会卡,且离真内核远)。
+**⑤ 方向学生已拍板 = 路线 B**(迷你版 + 真版并排)。学生两个硬要求:① 核心诉求是"看懂 AI 编译器怎么把大模型转成一个个内核";② 纯概念吸收不了,要代码当拐杖。三条候选里 A(造完迷你VM,离真内核远)、C(纯读真 inductor,吸收不了)被排除,选 B。
 
-**三条候选路线(给学生选,推荐 B)**:
+**B 当前进度:`lower_c.py` 已写完跑通** ✅
+- 文件:`mini_compiler/lower_c.py`(上一棒 AI 写的,桥梁不是练习题,学生要看懂可改)
+- 干啥:把融合图(3 节点)和原始图(8 节点)**分别 emit 成 C 循环代码字符串**,打印对照
+- 跑通输出:原始图 emit 3 个 for 循环(POW/MEAN累加/MUL),融合图 emit 2 个(POW+MEAN合一 / MUL)→ **直观看到融合省循环 = 省内核 = 省启动开销**(④ 融合在后端的回报)
+- 学生该做的:改坏几次 `lower_c.py`(改 N=8、加节点、合循环),确认懂每行
 
-- **A. 造完迷你版 ⑤a/⑤b/⑤c**(树遍历→线性VM→emit C 代码→tiling 概念):工程课,长,体感足但离真内核远。学生之前嫌"简化太多"。
-- **B. 迷你版停在 ④,转"迷你+真版并排"(推荐)**:写一个 `lower_c.py` 把融合图 emit 成 C 循环代码(轻,能跑能改),**紧接着打开真 `torch._inductor.codegen`** 看同一算子生成的 Triton 代码,两份并排对比。代码当拐杖 + 直击核心诉求(图→内核)。
-- **C. 跳过迷你 ⑤,直接读真 inductor**:太抽象,学生吸收不了(已验证)。
-
-**为什么是 B**:学生的两个要求(代码拐杖 + 看懂真内核)被 B 同时满足。`lower_c.py` 我们已设计好(emit 嵌套循环 C 字符串,element-wise→`for(i)y[i]=a[i]+b[i];`,reduce→两层循环,融合 RMSNORM→一循环体五步合一),写完立刻对照 inductor codegen 的 Triton 输出。
+**B 下一步(未做,下棒接手)**:对照真 inductor 生成的 Triton 内核
+- 让学生跑 `torch.compile` 装饰一个 rsqrt(mean(x²)+eps)*w,去系统 temp 找 `__inductor_*.py` 打开
+- 和 `lower_c.py` 的 C 代码并排看:骨头一样(循环+访存+算),词汇不同(`tl.load/tl.program_id` vs `a[i]/for i`)
+- 目的:学生亲眼看到"我们迷你版 emit 的 C 循环 = 真 inductor emit 的 Triton,结构同构",这就是"看懂大模型怎么转内核"
+- 注意:本机 cpu torch 能跑 inductor codegen(生成 .py 不需要 GPU),但执行编译后的内核要 GPU(本机无独显,看代码即可不执行)
 
 **踩过的坑(下棒别重蹈)**:
 1. 一度把 VM 定位成"替身跳过 lowering",被学生识破讲拧了。正确定位:VM 是字节码派后端(和 Crafting Interpreters 同级),lowering 是教学正餐不跳过,真正略过的是"指令→机器码"。
 2. 调研 agent 派子 agent 太多撑爆上下文(100万 token),没拿到完整结论。结论是凭知识补的(Crafting Interpreters=档①无寄存器分配栈式VM;tinygrad/TVM=档③带tiling;Kaleidoscope=档③借LLVM)。学生认可"档①和 CraftInterp 同档,不算偷懒"。
 3. 学生对"多链共享中间节点"问过——答案是引用计数,讲过不写。
+4. 学生骂过"方案老定不下来"——根因是上一棒把决策权抛回给学生却没逼定。教训:给推荐 + 逼学生一句话拍板,别开放性询问。
 
-**已验证跑通**:`passes.py` `fuse(graph, outputs)` → 8 节点 → 3 节点(`INPUT×2 + RMSNORM(x,w)`)。跑法:`cd mini_compiler && python passes.py`(本机 cpu torch 即可)。
+**已验证跑通**:
+- `cd mini_compiler && python passes.py` → 8→3(④ 融合)
+- `cd mini_compiler && python lower_c.py` → 两份 C 代码对照(⑤ lowering 迷你版)
+- 本机 cpu torch 即可,不需 GPU
 
 ## 8️⃣ 已讲课程内容速查(怕忘)
 
