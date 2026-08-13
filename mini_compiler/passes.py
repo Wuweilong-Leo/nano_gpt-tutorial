@@ -81,7 +81,10 @@ def fuse(graph, outputs):
             #   先验再决定——这步写对了,前面 z=a*b 的崩溃就修好了
             #   if cur.op != want:   →   hit = False; break   (不对就否决,别硬往下摸)
             #   mid.append(cur)                                   (对了,收进 mid)
-            pass   # ← 删掉这行 pass,填上面三行
+            if cur.op != want:
+                hit = False
+                break
+            mid.append(cur)
 
         if not hit:
             continue                       # 没命中(如 z=a*b 这种普通乘法),原样留
@@ -97,6 +100,7 @@ def fuse(graph, outputs):
         #     ② eps 的 e:它不在 chain 上,是 ADD 的第二个输入
         #        ADD = mid[1],所以 e = mid[1].inputs[1]
         #   把这五个名字塞进 dead(提示:{n.name for n in mid} | {mid[1].inputs[1].name})
+        dead |= {n.name for n in mid} | {mid[1].inputs[1].name}
 
     # ---- 第二遍:搬图,dead 里的跳过,MUL 格换成 RMSNORM ----
     new_graph = {}

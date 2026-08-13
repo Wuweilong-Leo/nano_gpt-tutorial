@@ -7,9 +7,11 @@
 
 - **已完成**：第 1-7 课（基础）+ 第 9-11 课（KQV/Embedding/Block/完整 GPT/训练生成）= 里程碑 M0-M5
 - **进行中**：M8 SFT(主线,M8 Lesson2 step3 卡在"切割线定位函数",暂时搁置)；
-  **M8.6 手写迷你编译器支线**(①②③✅,④优化管线进行中:融合 pass fuse 已跑通 8→3)
-- **下次上课**：**M8.6 第④步续**——fuse 已跑通骨架(8→3),学生待填两处核心 TODO
-  (循环"先验 op 再摸" + dead 名单用名字不用 op 类型);填完测非匹配图不崩→融合 pass 收尾→常量折叠或串主流程
+  **M8.6 手写迷你编译器支线**(①②③④ ✅ 全部过关,融合 pass `fuse` 8→3 稳定跑通,两个 TODO 填完)
+- **下次上课**：**M8.6 第⑤步方向待学生拍板**——④ 已收尾,但 ⑤「后端/lowering」该走哪条路学生没定。
+  核心诉求是"看懂 AI 编译器怎么把大模型转成一个个内核",且要代码当拐杖(纯概念吸收不了)。
+  推荐路线 B:写 `lower_c.py`(迷你版 emit C 循环代码)→ 紧接着对照真 `torch._inductor.codegen` 的 Triton 输出并排看。
+  **详见 PLAN §7️⃣ 末尾「⚠️ 接力交接」**。
 
 ## 📊 进度仪表盘
 
@@ -691,9 +693,38 @@ for want in chain:
 - 只认 MUL 终点(RMSNorm 定义如此,非限制)
 - 链长写死 4 层(list+循环版已留"加 list"的钩子)
 
-### 下一步
+### ✅ ④ 融合 pass 收尾(2026-08-13,接力交接前最后一棒)
 
-填两处 TODO → 测非匹配图不崩 → 融合 pass 收尾 → 常量折叠(三 pass 凑齐)或串主流程(`parse→DCE→fuse` 管线,先别管常量折叠)。test_prog.txt 仍未写,是 step③ 遗留,该学生补。
+两处 TODO 都填完,`fuse` 8→3 稳定跑通:
+
+- **TODO ①**(循环"先验 op 再摸"):`for want in chain` 里,`cur = cur.inputs[0]` 后立刻 `if cur.op != want: hit=False; break`,对了才 `mid.append(cur)`。这修了"非匹配图(如 `z=a*b` 普通乘法)崩溃"——从 MUL 往回摸一格不是 RSQRT 就否决,不硬往下摸。
+- **TODO ②**(dead 名单用名字):`dead |= {n.name for n in mid} | {mid[1].inputs[1].name}`。链上 4 中间节点(r/a/m/x2)+ ADD 的 eps 输入 e(它不在 chain 上,是 `mid[1].inputs[1]`)= 5 名字全蒸发。
+
+**最终输出**:`INPUT×2 + RMSNORM(x, w)`,5 个中间节点清干净。与 `_fusion_check.py` 真模型 96→84 同构(同一种指纹匹配)。
+
+**`remove_dead_nodes` 是学生自己写的**(上一棒审过):从出口 `outputs=["y"]` 出发,`alive`+stack 反向遍历,返回字典。在这张测试图上删不了东西(没死节点),真活儿是 fuse 干的——但 DCE 是给"有废分支"的图准备的,概念到位。
+
+### ⚠️ ⑤ 后端方向:接力交接(2026-08-13,给下一棒 AI)
+
+**④ 已完全收尾**,①②③④ 四步过关。但 ⑤「后端/lowering」该走哪条路,**学生没拍板**——这是下节课第一件事。
+
+**学生两个硬要求**(上棒踩出来的):
+1. 核心诉求是"看懂 AI 编译器怎么把大模型转成一个个内核"(不是造玩具)
+2. 纯概念吸收不了,要代码当拐杖
+
+**三条候选路线**(推荐 B,理由见 PLAN §7️⃣ 末尾):
+- A. 造完迷你版 ⑤a/⑤b/⑤c(树遍历→线性VM→emit C→tiling 概念):长,离真内核远,学生之前嫌"简化太多"
+- **B. 迷你版停在 ④,转"迷你+真版并排"(推荐)**:写 `lower_c.py`(emit 嵌套循环 C 字符串)→ 立刻打开真 `torch._inductor.codegen` 看 Triton 输出并排对比
+- C. 跳过迷你 ⑤ 直接读真 inductor:太抽象,学生吸收不了(已验证)
+
+**`lower_c.py` 已设计好**(待 B 确认后写):element-wise→`for(i)y[i]=a[i]+b[i];`,reduce→两层循环,融合 RMSNORM→一循环体五步合一(直观看到融合省循环)。写完对照 inductor codegen 的 Triton(`tl.load/tl.program_id` 替代 `a[i]/for i`,骨头一样词汇不同)。
+
+**上棒踩的坑(下棒别重蹈)**:
+1. 一度把 VM 定位成"替身跳过 lowering"→ 被学生识破。正确:VM=字节码派后端(Crafting Interpreters 同级),lowering 是教学正餐不跳,真正略过的是"指令→机器码"。
+2. 调研 agent 派子 agent 太多撑爆上下文(100万token)→ 没拿到完整结论。结论凭知识补(CraftInterp=档①栈式无寄存器;tinygrad/TVM=档③带tiling;Kaleidoscope=档③借LLVM),学生认可档①不偷懒。
+3. 学生问过"多链共享中间节点"→ 答案引用计数,讲过不写。
+
+**已验证跑通**:`cd mini_compiler && python passes.py` → 8→3(本机 cpu torch 即可,不需 GPU)。test_prog.txt 仍未写是 step③ 遗留,非阻塞,学生哪天想补再补。
 
 ## 📌 备忘
 
