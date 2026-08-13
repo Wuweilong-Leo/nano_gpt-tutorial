@@ -6,8 +6,10 @@
 ## 📍 当前位置
 
 - **已完成**：第 1-7 课（基础）+ 第 9-11 课（KQV/Embedding/Block/完整 GPT/训练生成）= 里程碑 M0-M5
-- **进行中**：M8 SFT(主线,M8 Lesson2 step3 卡在"切割线定位函数")；**M8.6 手写迷你编译器支线**(①②③步✅,第④步优化管线学生自己写中)
-- **下次上课**：**M8.6 第④步续**——学生写完优化管线(死代码消除+融合)后贴输出过关,再开⑤后端 VM
+- **进行中**：M8 SFT(主线,M8 Lesson2 step3 卡在"切割线定位函数",暂时搁置)；
+  **M8.6 手写迷你编译器支线**(①②③✅,④优化管线进行中:融合 pass fuse 已跑通 8→3)
+- **下次上课**：**M8.6 第④步续**——fuse 已跑通骨架(8→3),学生待填两处核心 TODO
+  (循环"先验 op 再摸" + dead 名单用名字不用 op 类型);填完测非匹配图不崩→融合 pass 收尾→常量折叠或串主流程
 
 ## 📊 进度仪表盘
 
@@ -645,6 +647,53 @@ model_dir = snapshot_download('qwen/Qwen3-0.6B', cache_dir='F:/study/big_model/m
 - **infra 容易越挖越深**：尤其分布式训练水深，给理论设硬上限——M6/M11 里的 infra 内容严格按时长控制（每个点 5-10 分钟图解），不单独开 infra 深挖课。把 infra 兴趣引流到部署仪式（有出口有产物），别发散到"我也想搞分布式训练"（无底洞）。
 - **vLLM Windows 风险**：RTX 5080 Blackwell sm_120 很新，vLLM 在 Windows 原生支持差。部署仪式保底用 Ollama（封装 llama.cpp，Windows 友好，自带 OpenAI 兼容 API）；首选 WSL2 跑 vLLM；最保底 llama.cpp+FastAPI 手写。到部署仪式时再定，现在不动。
 - **分布式训练只能纯理论**：DDP/ZeRO/TP/NCCL 在 16G 单卡永远没法真跑，别试图用 `torchrun --nproc_per_node=2` 单卡模拟两卡（学生困惑+跑不出通信开销）。老实画图理解。
+
+## 🔧 M8.6 第④步:优化管线 · 融合 pass 进展(2026-08-13)
+
+**位置**:`mini_compiler/passes.py` 的 `fuse` 函数。前序 step③ 的 `parse.py` 已写好但**缺 `test_prog.txt` 样例未跑通**,当前用硬编码 `graph`(8 节点 RMSNorm 链)测 `fuse`。
+
+**跑通状态**:8 节点 → 3 节点(`INPUT x`、`INPUT w`、`RMSNORM(x,w)`),验收达标。
+
+### 教学踩点(三轮挣扎的核心教训)
+
+学生写 `fuse` 撞了三轮,根因不是代码不会写,是**没意识到"单遍循环里删不掉中间节点"**:
+
+1. **单遍时机天生错**:循环按插入顺序走 `x→w→x2→m→e→a→r→y`,中间节点排在终点 MUL 前面,**先搬后认**,走到 MUL 认出指纹时中间节点早进新图了。
+2. **用 op 类型删会误伤叶子**:学生三轮都拿 `op==INPUT`/`op==POW` 判删,可叶子 `x/w` 也是 INPUT,被误删→8 变 1(脏水孩子一起泼)。
+3. **正解:两遍结构**。第一遍只认指纹、往 `dead` 集合记"要蒸发谁的名字"(**记字符串名字,不记节点对象**);第二遍才搬图,名字在 dead 里的跳过。`repl` dict 记"命中的 MUL → (x,w)",第二遍换成 RMSNORM。口诀:**用名字区分留/删,别用 op 类型**。
+
+### 已重构:list+循环版(收"太定制"+修崩溃)
+
+学生提"太定制",且发现**非匹配图(z=a*b)会崩**——根因是"先伸手取 inputs[0]、后验 op",摸到叶子(INPUT,空 inputs)就 IndexError。重构为链数据化:
+
+```python
+chain = [Op.RSQRT, Op.ADD, Op.MEAN, Op.POW]   # 验四层,叶子 x 不在链里
+for want in chain:
+    cur = cur.inputs[0]            # 往回摸一格
+    if cur.op != want:             # 先验再摸(修崩溃的关键)
+        hit = False; break
+    mid.append(cur)
+```
+
+骨架已打入 `passes.py`,**两处 TODO 待学生填**:
+- **TODO ①**(循环里 3 行):`if cur.op != want: hit=False; break` + `mid.append(cur)`
+- **TODO ②**(1 行):`dead = {n.name for n in mid} | {mid[1].inputs[1].name}`(mid[1] 是 ADD,其 inputs[1] 是 eps 的 e;e 不在 chain 上单独加)
+
+### 学生提出的两个好问题(已答,记结论)
+
+1. **"大图会有多个融合点吗?"** → 会,transformer 一层就有两条 RMSNorm 链。list+循环版天生吃得多(同一次遍历多条链各记各的 dead/repl)。
+2. **"两个节点会共用一个输入吗?"** → 会,叫"菱形",图结构常态。**当下 fuse 假设"每个中间节点只有一个消费者"是简化前提,不是真相**。等铺开真模型图(96 节点 Qwen)撞上菱形再补**引用计数**(删前查被几个人用)。现在不预填,避免为没出现的 bug 写代码。
+
+### 简化前提清单(将来铺开时要回来补的)
+
+- 单消费者假设(菱形/共享节点 → 引用计数)
+- 只认一个指纹(加 GELU 时被"重复"硌到再抽象成指纹表——三法则)
+- 只认 MUL 终点(RMSNorm 定义如此,非限制)
+- 链长写死 4 层(list+循环版已留"加 list"的钩子)
+
+### 下一步
+
+填两处 TODO → 测非匹配图不崩 → 融合 pass 收尾 → 常量折叠(三 pass 凑齐)或串主流程(`parse→DCE→fuse` 管线,先别管常量折叠)。test_prog.txt 仍未写,是 step③ 遗留,该学生补。
 
 ## 📌 备忘
 

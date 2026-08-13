@@ -9,9 +9,10 @@
 
 ## 0️⃣ 30 秒必读(接手就做)
 
-- **学生**:新手,已手写 nanoGPT(`lesson09_attention.py`,120M/6层/12head,GPU 训练过,loss 4.5→2.5),已学 BPE(M7),正在学 SFT(M8)。
-- **当前进行中**:M8 SFT(用 Qwen3-0.6B + Alpaca-zh 做指令微调)。
-- **学生当前卡在**:M8 Lesson2 第 3 步——写"切割线定位函数"(loss masking 用),概念已讲完,代码还没跑通。
+- **学生**:新手,已手写 nanoGPT(`lesson09_attention.py`,120M/6层/12head,GPU 训练过,loss 4.5→2.5),已学 BPE(M7),正在学 SFT(M8,当前搁置)+ M8.6 迷你编译器支线(进行中)。
+- **环境(这台机器,2026-08-13 新装)**:`D:\ai\nanoGPT_venv`(Python 3.11.9 + torch 2.13.0+cpu + transformers 5.15 + tiktoken/numpy/tqdm/requests)。**无 NVIDIA 独显**(仅 Intel 核显)→ M0-M7/M8.5/M8.6 能跑,**M8 SFT 真训练跑不动**,只能学原理。跑脚本:`PYTHONUTF8=1 /d/ai/nanoGPT_venv/Scripts/python.exe xxx.py`。自检:`verify_env.py`(8 项全过)。
+- **当前进行中**:**M8.6 第④步 · 融合 pass `fuse`**。骨架已跑通 8→3 节点(`passes.py`),学生待填两处 TODO。
+- **学生当前卡在(下节课接着的)**:M8.6 `fuse` 的 list+循环版里两处核心 TODO 没填——TODO① 循环"先验 op 再摸"(修非匹配图崩溃)、TODO② dead 名单用名字不用 op 类型。M8 SFT step3 切割线函数暂停搁置。
 - **教学规则(学生明确要求的,违反会被纠正)**:
   1. 代码**学生自己写**,老师只给骨架/hint/解释,绝不代写完整可运行代码
   2. 语法/API 细节直接给答案,不猜谜("这种语法问题可以直接告诉我")
@@ -24,22 +25,31 @@
 
 ## 1️⃣ 下一步行动(别家 AI 接手立刻照做)
 
-### 当前任务:M8 SFT Lesson2 · step3 写"切割线定位函数"
+### 当前任务:M8.6 第④步 · 填 `fuse` 的两处核心 TODO
 
-**背景**:`lesson13_sft.py` 已完成:加载 Alpaca 数据(48818 条)+ `apply_chat_template` 格式化 + tokenize(一条数据 = 143 个 token)。
+**背景**:`mini_compiler/passes.py` 的 `fuse` 已重构为 list+循环版,骨架跑通 8→3 节点(硬编码 RMSNorm 链图测的)。两处 TODO 是逻辑命门,学生填完才算融合 pass 收尾。
 
 **学生已理解的概念**(不用再讲):
-- `messages` → `apply_chat_template` → `<|im_start|>user...<|im_end|>` 格式
-- loss masking = "只改答案不改题目":非答案部分标 `-100`(PyTorch CE 跳过),答案 + `<|im_end|>` 保留真 id
-- 需要定位"答案起点"做切割:前 17 个 token 是问题+assistant头+思考开关,`114566`("以下是")开始是答案
+- 为什么必须"两遍":单遍循环按插入顺序走,中间节点排在终点 MUL 前面,先搬后认删不掉
+- 用"名字"区分留/删,别用 op 类型——叶子 x/w 也是 INPUT,靠 op 删会误伤
+- `dead`(set,存要蒸发的中间节点名字)和 `repl`(dict,命中 MUL→(x,w))分工:一个管删谁、一个管谁换头
+- 非匹配图(如 z=a*b)会崩:根因是"先伸手取 inputs[0]、后验 op",摸到叶子就 IndexError;正解是"先验 op 再摸"
 
-**让学生做的事**(代码由学生写,hint 已给):
-- 找到 `assistant_head = torch.tensor([151644, 77091, 198])`(`<|im_start|>assistant\n`)在 input_ids 里的位置
-- 它结束的位置 = 切割线;之前全设 `-100`,之后保留原 id
-- 输出 `labels` 前 20 个:`[-100, -100, ..., 114566, ...]`
-- 学生贴输出 → 老师检查 → 进入 step4 训练循环
+**让学生填的两处**(`passes.py` fuse 函数内,代码由学生写,hint 已给):
+- **TODO ①**(循环内 3 行):`if cur.op != want: hit = False; break` + `mid.append(cur)`——先验再摸,修崩溃
+- **TODO ②**(1 行):`dead = {n.name for n in mid} | {mid[1].inputs[1].name}`——mid=[r,a,m,x2],mid[1]=a(ADD),a.inputs[1]=e(eps 的 CONST,不在 chain 上单独加)
 
-**step4 预告(下下步)**:SFT 训练循环——batch 多条数据、只取答案部分算 loss、`loss.backward()`、AdamW step。
+**过关验证**(学生贴输出):
+1. 跑 `passes.py` → 优化前 8 → 优化后 3(`INPUT x`/`INPUT w`/`RMSNORM(x,w)`)
+2. 跑非匹配图 `z=a*b`(`a=INPUT; b=INPUT; z=MUL[a,b]`)→ 不崩,原样返回 3 个节点(没命中指纹,原样留)
+
+**填完后的分支**(二选一,学生定):常量折叠(三 pass 凑齐)或串主流程(`parse→DCE→fuse` 管线,test_prog.txt 待学生补)。
+
+### 搁置:M8 SFT Lesson2 step3 切割线函数
+
+M8.6 收尾后回来续。概念已讲完(assistant 头 [151644,77091,198] 定位、-100 masking),代码还没跑通。详见 PROGRESS.md。**注意:M8 SFT 真训练在这台机器跑不动(无独显),只能学原理/读代码。**
+
+**step4 预告(回 M8 时)**:SFT 训练循环——batch 多条数据、只取答案部分算 loss、`loss.backward()`、AdamW step。
 
 ### 待补事项(M6 欠账,不紧急但面试会考)
 
@@ -62,7 +72,7 @@
 | M7 | BPE+中文 token 对比 | ✅ 完成 | 2026-08-09 收官 |
 | **M8** | **SFT 指令微调** | 🔄 **进行中** | Qwen3-0.6B + Alpaca-zh |
 | M8.5 | 大模型端到端执行流(文件→logits 七站) | 📋 方案定稿待教 | 见 §7️⃣;M8 step3 后再开 |
-| M8.6 | 手写迷你 AI 编译器(影子版) | 🔄 **进行中**(①②③✅ ④优化中) | 见 §7️⃣;代码在 `my_gpt/mini_compiler/`(未推 git) |
+| M8.6 | 手写迷你 AI 编译器(影子版) | 🔄 **进行中**(①②③✅ ④融合pass骨架跑通8→3,待填2 TODO) | 见 §7️⃣;代码在 `mini_compiler/`(已推 git) |
 | M9 | LoRA | ⬜ 待学 | |
 | M10 | 推理加速(KV cache/连续batching/PagedAttention) | ⬜ 待学 | 素材:msmodeling |
 | M11 | 量化 + 架构进阶(RoPE 深讲,MoE/MLA/MTP 扫盲) | ⬜ 待学 | 素材:msmodeling |
