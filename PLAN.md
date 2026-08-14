@@ -89,6 +89,32 @@
 
 **⑤ 路线 B 状态**:`lower_c.py` 已跑通(emit 两份 C 代码,看到融合省循环)。**先补 CUDA 再回编译器**(学生定:不懂 CUDA 看不懂 Triton 内核)。补完 CUDA 模块二 1-2 章后,回这步对照真 `torch._inductor` 生成的 Triton 内核。
 
+### 🆕 2026-08-14 ⑤ 追加课:内核 → 调度闭环(今天教完,接上一棒)
+
+今天学生要的是"端到端在机子上怎么跑",我们没走"装 MSVC 真跑 inductor",而是走**纯概念闭环 + 真实验证**,主线如下(全部保留在 `mini_compiler/NOTES_internals.md`):
+
+**教了什么**(一串,不是代码练习,是概念+真代码确认):
+1. **内核在代码段的真相**:`_cuda_launch_kernel`(打包参数→找内核)→ `cudaLaunchKernel(grid,block,args,stream)` = 真正入队
+2. **申请内存是 CPU 的活,不在内核里**:CPU 先分配缓冲再让 GPU 跑;GPU 只是持地址的哑巴工人
+3. **GPU 调度前检查三件事**:流(stream)队尾空没、资源(算/传)桶空没、依赖数据就绪没 → 三者取 max
+4. **调度器选流**:贪心挑"结束最早"的流(msmodeling 的 `multistream_pass.py` 就是这么做的)
+5. **bubble 气泡**:依赖没 ready 时 GPU 确实会卡,靠 多流/事件/重叠 填 → 这就是 multistream 存在理由
+6. **静态 vs 动态 shape**:编译期能定内存大小 vs 运行到那步才现算
+
+**真验证(本机已跑)**:
+- `torch.fx.symbolic_trace` 确认 `matmul` = 图里的一个 `fx.Node` ✅
+- `torch.cuda.memory_allocated/reserved` = N/A(本机无 GPU,诚实标注)
+
+**修正交接单一处错误**:PLAN 之前写"本机 cpu torch 能跑 inductor codegen(只要 .py 不要 GPU)"——**实测是错的**。本机缺 MSVC `cl.exe`,`@torch.compile` 直接抛 `InvalidCxxCompiler: Compiler: cl is not found`,连生成 `.py` 都到不了(codegen 前就死)。下棒接手别再让学生试"跑 torch.compile 找 Triton"。
+
+**素材**:`D:\ai\_downloads\msmodeling`(昇腾 NPU 性能建模,抽取了 `multistream_pass.py` 的 `_estimate_start_time_s`/`_build_schedule` 讲调度)。它需要者要时再抽,别整读。
+
+**已验证跑通(续)**:
+- `cd mini_compiler && python passes.py` → 8→3(④ 融合)
+- `cd mini_compiler && python lower_c.py` → 两份 C 代码对照
+- `torch.fx` 图节点验证(matmul=fx.Node)✅(上面)
+- ⚠️ 不要让学生跑 `torch.compile` 找 Triton(本机缺 cl)
+
 **dispatch table 知识点(别讲拧)**:两种表——codegen 表(编译期用,如 tinygrad `code_for_op`)/ 运行时 dispatch 表(运行时用,如 torch.fx target、PyTorch `ops_table`)。派B(生成代码)有 codegen 表,派A(解释执行)有运行时 dispatch 表。详见 PROGRESS「🖥️ GPU 硬件补课」节。
 
 ---
