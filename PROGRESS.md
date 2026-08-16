@@ -737,6 +737,51 @@ for want in chain:
 - `cd mini_compiler && python passes.py` → 8→3(④ 融合,本机 cpu torch 即可)
 - `cd mini_compiler && python lower_c.py` → 两份 C 代码对照(⑤ lowering 迷你版)
 - 本机无独显,以上都不需 GPU。test_prog.txt 仍未写是 step③ 遗留,非阻塞,学生哪天想补再补。
+  ⚠️ 上段"本机无独显"是旧棒 AI 误记——**实际有 RTX 5080 独显**(2026-08-16 核实,见下节)。lower_c/passes 确实不需 GPU,但 M8 SFT 真训练能跑。
+
+## 🖥️ GPU 硬件补课(2026-08-16,学生主动发起)
+
+**起因**:学生从别的 AI 听到"dispatch table 是编译器编出来留运行时用",质疑我之前讲的"派 B 没 table",把我问倒了。纠正后(两种表:codegen 表编译期用 / 运行时 dispatch 表运行时用),学生想看真代码里的表。我找了 torch.fx/PyTorch ops_table/tinygrad code_for_op 三张真表给他看。随后学生说"想了解 AI 编译器怎么把大模型转成一个个内核"→ 转去看 GPU 硬件(因为不懂硬件看不懂内核)。
+
+**素材库**:学生 clone 了 `F:/study/AIInfraGuide/`(github.com/caomaolufei/AIInfraGuide,261 篇 markdown 的 AI Infra 文档站,Astro 建)。GPU 硬件正文在 `docs/guides/模块一-前置知识/gpu/gpu-basics.md`(493 行完整)。
+
+**这轮讲透的概念**(学生已懂,不用再讲):
+- **CPU vs GPU**:CPU 法拉利(少核聪明、延迟优化),GPU 大巴车队(多核笨、吞吐优化)。深度学习=海量重复乘加=撞 GPU 枪口
+- **GPU 指令四类**:整数(地址)/浮点(标量 FFMA)/Tensor Core 矩阵乘加(MMA)/访存同步
+- **硬件层次(5080 实数)**:GPU 整卡 → 84 个 SM → 每 SM 4 个 Tensor Core + 128 个 CUDA Core + ~100KB 共享内存 + ~256KB 寄存器。Tensor Core 共 336 个,CUDA Core 共 10752 个(84×128)
+- **Tensor Core**:一条指令算一小块矩阵乘加 D=A×B+C(如 16×16×16),比 CUDA Core 标量算快几百倍。精度档 fp64/tf32/fp16/bf16/fp8/int8/int4,精度越低越快越易丢精度(量化本质)。5080 第4代支持 fp8,无 fp64(消费卡砍了)
+- **数据流三跳**:HBM(显存)→共享内存(SRAM)→寄存器→Tensor Core。Tensor Core **只吃寄存器**,不读显存(物理够不着)。共享内存是中转池,让 warp 协作搬运+复用(读一次 HBM 供多人多次用)
+- **显存金字塔**:HBM(16GB/~500GB/s/几百拍)→ L2(几十MB/~2TB/s)→ 共享内存(每SM~100KB/~10TB/s)→ 寄存器(每线程~256 float/~30TB/s/1拍)。越往下越快越小越私有
+- **Roofline / Memory Wall**:算力 vs 带宽谁先撞墙。算少搬多(element-wise)→ 带宽先撞墙 Tensor Core 闲着;算多搬少(matmul)→ 算力先撞墙。大模型推理慢常因喂不饱 Tensor Core(KV cache 太大带宽撑不住)
+- **wmma 指令(PTX/CUDA C 层)**:`wmma::fragment`(模板类,声明装 tile 的寄存器组,编译器决定放寄存器)→ `wmma::load_matrix_sync`(显存/共享内存→寄存器)→ `wmma::mma_sync`(触发 Tensor Core 算 D=A×B+C)→ `wmma::store_matrix_sync`(寄存器→显存)。先 load 再 mma,不能跳(Tensor Core 只吃寄存器)
+- **切块 tiling**:大矩阵塞不进寄存器,切 16×16 小块循环算。沿 K 方向切多块累加(那个 +C 是累加器)。**切块是软件干的**(cuBLAS/cutlass/inductor/自己写),硬件只算拿到的小块。tile 大小是优化核心(inductor tiling pass 自动选)
+- **block/grid/thread/warp 调度**:
+  - thread=最小执行单位(一个工人跑一份 kernel 副本),用 threadIdx 编号算不同数据
+  - 32 thread 捆成 warp(硬件调度最小单位,SIMT 同一拍执行同一指令)
+  - block=一组 thread 归一个 SM(不跨 SM,所以能共享内存/同步),一 SM 能同时塞多个 block(资源够的话)
+  - grid=所有 block 的总网格,启动时定 `<<<grid, block>>>`
+  - **warp 切换完全硬件自动**(调度器每拍选就绪 warp 发指令),程序员控不了切换动作,只能控"有多少 warp 可切"(block 大小/资源用量)。切换零开销(每 warp 寄存器物理独立)。唯一软件干预是 `__syncthreads()`(block 内屏障)
+  - **软件感知 block/grid 不是为控制调度,是为表达并行结构**:block 划定数据分块+共享内存范围+同步范围,grid 表达总并行规模。硬件管"谁先跑",软件管"数据怎么切/谁共享/谁同步"
+- **5080 每 SM 最多 1536 thread**(受硬件上限+共享内存+寄存器+block 数限制)。整卡 84×1536≈13万 thread 同时跑。塞满=占用率高=性能好(Occupancy 概念)
+- **内存行主序**:矩阵在内存一维铺开,一行一行存。地址公式 `A[i][j] = i×每行长度 + j`。同行连续(快)、跨行隔开(慢)。PyTorch/CUDA 行主序,Fortran/MATLAB 列主序。leading dimension(第三参数)=每行长度=换行跳多远
+
+**完整 CUDA matmul 内核已讲**(带 main() 端到端):CPU 准备数据→cudaMemcpy H2D→kernel(grid/block 启动)→load_matrix_sync→mma_sync 循环累加→store_matrix_sync→cudaMemcpy D2H→检查。代码没存进仓库(口头讲),需要时重写。
+
+**dispatch table 知识点(值钱,别再讲拧)**:
+- **两种表都叫 dispatch table,归属不同**:
+  - codegen 表(编译期用):tinygrad `code_for_op = {Ops.ADD: lambda...}`,编译器查它拼代码
+  - 运行时 dispatch 表(运行时用):torch.fx 节点 target / PyTorch `ops_table = {(op,device): impl}`,编译器编出来留 runtime 查
+- 派 B(生成代码,如 tinygrad/inductor)有 codegen 表,运行时不查表(代码已编完);派 A(解释执行,如 torch.fx)有运行时 dispatch 表
+- inductor 的"融合算子表"不是静态字典,是编译期生成的 wrapper.py 里一堆 @triton.jit 内核函数 + 调用序列。承载三处:①磁盘 .py 文件 ②内存 Python 模块(sys.modules,compile_tasks.py:_reload_python_module 的 exec)③Triton 二进制缓存(~/.triton/cache 的 cubin/ptx)
+
+**下棒别重蹈的坑**:
+1. 别把 VM 定位成"替身跳过 lowering"——是字节码派后端,lowering 是教学正餐
+2. 别把 codegen 表和运行时 dispatch 表混成一个讲——两种表用途不同
+3. 别说"派 B 没 dispatch table"——有 codegen 表,只是没运行时 dispatch 表
+4. 调研 agent 别派子 agent 太多(撑爆 100万 token)
+5. 环境别误记——实际是 F:/study/big_model/nanoGPT_venv(Python3.14+torch2.11+cu128+RTX5080 有独显),不是 D盘 cpu 无独显
+
+**下一步待学生定**:GPU 补课进行中(刚讲完内存布局),下一题学生发问。可能:① 继续 GPU(warp/SIMT/同步)② 回 M8.6 路线 B 对照真 inductor ③ 别的。M8 SFT step3 仍搁置。
 
 ## 📌 备忘
 

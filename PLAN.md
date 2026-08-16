@@ -9,10 +9,10 @@
 
 ## 0️⃣ 30 秒必读(接手就做)
 
-- **学生**:新手,已手写 nanoGPT(`lesson09_attention.py`,120M/6层/12head,GPU 训练过,loss 4.5→2.5),已学 BPE(M7),正在学 SFT(M8,当前搁置)+ M8.6 迷你编译器支线(进行中)。
-- **环境(这台机器,2026-08-13 新装)**:`D:\ai\nanoGPT_venv`(Python 3.11.9 + torch 2.13.0+cpu + transformers 5.15 + tiktoken/numpy/tqdm/requests)。**无 NVIDIA 独显**(仅 Intel 核显)→ M0-M7/M8.5/M8.6 能跑,**M8 SFT 真训练跑不动**,只能学原理。跑脚本:`PYTHONUTF8=1 /d/ai/nanoGPT_venv/Scripts/python.exe xxx.py`。自检:`verify_env.py`(8 项全过)。
-- **当前进行中**:**M8.6 第⑤步 · 路线 B**(迷你版 + 真版并排)。④ 融合已收尾(8→3),`lower_c.py` 已写完跑通(emit C 循环代码,看到融合省循环)。下一步:对照真 `torch._inductor` 生成的 Triton 内核(见 §7️⃣ 末尾「⚠️ 接力交接」)。
-- **学生当前卡在(下节课接着的)**:`lower_c.py` 看懂后,**跑 `torch.compile` 让真 inductor 生成 Triton 代码,和迷你版 C 代码并排对照**。这是路线 B 的收尾,直击学生核心诉求"看懂大模型怎么转内核"。M8 SFT step3 切割线函数仍暂停搁置。
+- **学生**:新手,已手写 nanoGPT(`lesson09_attention.py`,120M/6层/12head,GPU 训练过,loss 4.5→2.5),已学 BPE(M7),正在学 SFT(M8,当前搁置)+ M8.6 迷你编译器支线 + GPU 硬件补课(进行中)。
+- **环境(实际在用,2026-08-16 核实)**:`F:\study\big_model\nanoGPT_venv`(Python 3.14.3 + torch 2.11.0+cu128 + transformers 5.14 + cuda 可用)。**有 NVIDIA 独显 RTX 5080(Blackwell sm_120,16GB)**→ M8 SFT 真训练能跑。跑脚本:`F:/study/big_model/nanoGPT_venv/Scripts/python.exe xxx.py`。⚠️ 之前某棒 AI 误记成"D盘 cpu 无独显",已修正——以本行为准。
+- **当前进行中**:**GPU 硬件补课**(学生主动发起,从 AIInfraGuide 仓库 `F:/study/AIInfraGuide/` 学)。已讲透:CPU vs GPU、SM/Tensor Core/CUDA Core 层次(5080=84 SM×4 Tensor Core×128 CUDA Core)、显存金字塔(HBM→L2→共享内存→寄存器)、Roofline/Memory Wall、wmma 指令(load→mma→store)、block/grid/thread/warp 调度、内存行主序布局。**M8.6 第⑤步路线 B 暂停**(lower_c.py 已写完跑通,待对照真 inductor Triton)。
+- **学生当前卡在(下节课接着的)**:GPU 硬件补课进行中,下一题待学生发问(刚学完内存布局行主序)。可能方向:① 继续 GPU(warp/SIMT/同步深入)② 回 M8.6 路线 B 对照真 inductor ③ 别的。M8 SFT step3 切割线函数仍暂停搁置。
 - **教学规则(学生明确要求的,违反会被纠正)**:
   1. 代码**学生自己写**,老师只给骨架/hint/解释,绝不代写完整可运行代码
   2. 语法/API 细节直接给答案,不猜谜("这种语法问题可以直接告诉我")
