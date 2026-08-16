@@ -781,6 +781,7 @@ for want in chain:
 3. 别说"派 B 没 dispatch table"——有 codegen 表,只是没运行时 dispatch 表
 4. 调研 agent 别派子 agent 太多(撑爆 100万 token)
 5. **两台机器并存,别搞混**:F 盘台式(RTX 5080 有独显,主力,代码仓库在这)+ D 盘另一台(无独显,学原理用)。之前一棒把 D 盘当"误记"用 F 盘覆盖了,错的——两台都真实。接手先确认学生在哪台(看当前 venv 路径或问)
+6. 🚨 **两台是不同电脑,本机资源对方取不到**(2026-08-16 学生明确):本机(F盘)的代码仓库/mini_compiler/AIInfraGuide clone/tinygrad clone/msmodeling/模型缓存/venv,另一台(D盘)的 AI 一概看不到。给对方 AI 的指令只写"获取命令 + repo 相对路径",**远程获取命令清单见 PLAN 0️⃣ 区「📦 对方 AI 获取资源的远程命令清单」**(四个 git clone 命令 + Qwen3/venv 获取方式),对方照着敲就行,不用问学生。
 
 **下一步待学生定**:GPU 补课进行中(刚讲完内存布局),下一题学生发问。可能:① 继续 GPU(warp/SIMT/同步)② 回 M8.6 路线 B 对照真 inductor ③ 别的。M8 SFT step3 仍搁置。
 

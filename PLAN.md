@@ -14,6 +14,21 @@
   - **① F 盘台式(有独显,主力)**:`F:\study\big_model\nanoGPT_venv`(Python 3.14.3 + torch 2.11.0+cu128 + transformers 5.14 + cuda 可用)。**RTX 5080(Blackwell sm_120,16GB)**→ M8 SFT 真训练能跑。跑脚本:`F:/study/big_model/nanoGPT_venv/Scripts/python.exe xxx.py`。代码仓库 `F:/study/big_model/my_gpt/` 在这台。
   - **② D 盘另一台(无独显,学原理用)**:`D:\ai\nanoGPT_venv`(Python 3.11.9 + torch 2.13.0+cpu + transformers 5.15 + tiktoken/numpy/tqdm/requests)。**无 NVIDIA 独显**(仅 Intel 核显)→ M0-M7/M8.5/M8.6 能跑,M8 SFT 真训练跑不动。跑脚本:`PYTHONUTF8=1 /d/ai/nanoGPT_venv/Scripts/python.exe xxx.py`。自检:`verify_env.py`。
   - ⚠️ 之前一棒 AI 把 D 盘信息当"误记"用 F 盘覆盖了——**错的,两台都是真实环境,并存**。接手前先确认学生在哪台机器(看当前 venv 路径或问学生)。
+  - 🚨 **关键隔离限制(2026-08-16 学生明确)**:**两台是不同电脑,本机(F 盘)的本地资源,另一台(D 盘)的 AI 一概取不到**。给对方 AI 的指令**只写"获取命令 + repo 相对路径",绝不假设对方有本机文件**。
+  - 📦 **对方 AI 获取资源的远程命令清单**(照着敲就能拿到,不用问学生):
+    ```bash
+    # 1. 主代码仓库(PLAN/PROGRESS/mini_compiler/lesson09/lesson13 等全在这)
+    git clone https://github.com/Wuweilong-Leo/nano_gpt-tutorial.git
+    # 2. AIInfraGuide(infra 主线素材,261 篇文档)
+    git clone https://github.com/caomaolufei/AIInfraGuide.git
+    # 3. tinygrad(M8.6 编译器参考书,线上读每文件 2-3 函数)
+    git clone https://github.com/tinygrad/tinygrad.git
+    # 4. msmodeling(华为昇腾推理仿真器,M8.5⑥ runtime 调度教具)
+    git clone https://gitcode.com/Ascend/msmodeling.git
+    ```
+    - **Qwen3-0.6B 模型权重**:走 HuggingFace,`from_pretrained("Qwen/Qwen3-0.6B", cache_dir=...)`,国内配 `HF_ENDPOINT=https://hf-mirror.com`(详见踩坑速查#6)
+    - **nanoGPT venv**:对方自己建,`pip install torch transformers datasets peft accelerate bitsandbytes tiktoken`(GPU 版按对方机器的 CUDA 版选 torch wheel)
+    - **本机已 clone 但对方没有的本地路径**(仅供参考,对方需重新 clone):`F:/study/big_model/{my_gpt,tinygrad,msmodeling}`、`F:/study/AIInfraGuide`、`F:/study/big_model/models/_hf_cache`
 - **当前进行中**:**GPU 硬件补课 · 消化阶段**(学生选"先消化 GPU,不急着加新课")。已讲透:CPU vs GPU、SM/Tensor Core/CUDA Core 层次(5080=84 SM×4 Tensor Core×128 CUDA Core)、显存金字塔(HBM→L2→共享内存→寄存器)、Roofline/Memory Wall、wmma 指令(load→mma→store)、block/grid/thread/warp 调度、内存行主序布局。素材来自 AIInfraGuide `docs/guides/模块一-前置知识/gpu/gpu-basics.md`。
 - **学生当前卡在(下节课接着的)**:GPU 知识刚学完一轮,学生在消化。下一步等学生发问——可能方向:① 继续补 GPU(warp/SIMT/同步,模块二 2.1-2.4)② 做 GPU 小实验验证消化 ③ 转 CUDA 编程实战(模块二 1.1 起)。**M8.6 编译器路线 B 暂停**(学生定:先补 CUDA 再回编译器,因不懂 CUDA 看不懂 Triton 内核)。M8 SFT step3 仍搁置。
 - **📚 学习路线对接 AIInfraGuide(2026-08-16 学生拍板,混合制)**:
