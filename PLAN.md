@@ -10,7 +10,10 @@
 ## 0️⃣ 30 秒必读(接手就做)
 
 - **学生**:新手,已手写 nanoGPT(`lesson09_attention.py`,120M/6层/12head,GPU 训练过,loss 4.5→2.5),已学 BPE(M7),正在学 SFT(M8,当前搁置)+ M8.6 迷你编译器支线 + GPU 硬件补课(进行中)。
-- **环境(实际在用,2026-08-16 核实)**:`F:\study\big_model\nanoGPT_venv`(Python 3.14.3 + torch 2.11.0+cu128 + transformers 5.14 + cuda 可用)。**有 NVIDIA 独显 RTX 5080(Blackwell sm_120,16GB)**→ M8 SFT 真训练能跑。跑脚本:`F:/study/big_model/nanoGPT_venv/Scripts/python.exe xxx.py`。⚠️ 之前某棒 AI 误记成"D盘 cpu 无独显",已修正——以本行为准。
+- **环境(两台机器并存,别搞混)**:
+  - **① F 盘台式(有独显,主力)**:`F:\study\big_model\nanoGPT_venv`(Python 3.14.3 + torch 2.11.0+cu128 + transformers 5.14 + cuda 可用)。**RTX 5080(Blackwell sm_120,16GB)**→ M8 SFT 真训练能跑。跑脚本:`F:/study/big_model/nanoGPT_venv/Scripts/python.exe xxx.py`。代码仓库 `F:/study/big_model/my_gpt/` 在这台。
+  - **② D 盘另一台(无独显,学原理用)**:`D:\ai\nanoGPT_venv`(Python 3.11.9 + torch 2.13.0+cpu + transformers 5.15 + tiktoken/numpy/tqdm/requests)。**无 NVIDIA 独显**(仅 Intel 核显)→ M0-M7/M8.5/M8.6 能跑,M8 SFT 真训练跑不动。跑脚本:`PYTHONUTF8=1 /d/ai/nanoGPT_venv/Scripts/python.exe xxx.py`。自检:`verify_env.py`。
+  - ⚠️ 之前一棒 AI 把 D 盘信息当"误记"用 F 盘覆盖了——**错的,两台都是真实环境,并存**。接手前先确认学生在哪台机器(看当前 venv 路径或问学生)。
 - **当前进行中**:**GPU 硬件补课**(学生主动发起,从 AIInfraGuide 仓库 `F:/study/AIInfraGuide/` 学)。已讲透:CPU vs GPU、SM/Tensor Core/CUDA Core 层次(5080=84 SM×4 Tensor Core×128 CUDA Core)、显存金字塔(HBM→L2→共享内存→寄存器)、Roofline/Memory Wall、wmma 指令(load→mma→store)、block/grid/thread/warp 调度、内存行主序布局。**M8.6 第⑤步路线 B 暂停**(lower_c.py 已写完跑通,待对照真 inductor Triton)。
 - **学生当前卡在(下节课接着的)**:GPU 硬件补课进行中,下一题待学生发问(刚学完内存布局行主序)。可能方向:① 继续 GPU(warp/SIMT/同步深入)② 回 M8.6 路线 B 对照真 inductor ③ 别的。M8 SFT step3 切割线函数仍暂停搁置。
 - **教学规则(学生明确要求的,违反会被纠正)**:

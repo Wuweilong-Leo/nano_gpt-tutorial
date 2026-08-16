@@ -736,8 +736,8 @@ for want in chain:
 **已验证跑通**:
 - `cd mini_compiler && python passes.py` → 8→3(④ 融合,本机 cpu torch 即可)
 - `cd mini_compiler && python lower_c.py` → 两份 C 代码对照(⑤ lowering 迷你版)
-- 本机无独显,以上都不需 GPU。test_prog.txt 仍未写是 step③ 遗留,非阻塞,学生哪天想补再补。
-  ⚠️ 上段"本机无独显"是旧棒 AI 误记——**实际有 RTX 5080 独显**(2026-08-16 核实,见下节)。lower_c/passes 确实不需 GPU,但 M8 SFT 真训练能跑。
+- 以上 mini_compiler 代码不需 GPU,两台机器都能跑。test_prog.txt 仍未写是 step③ 遗留,非阻塞,学生哪天想补再补。
+  ⚠️ **两台机器并存**(2026-08-16 学生澄清):F 盘台式(RTX 5080 有独显,主力,代码仓库在这)+ D 盘另一台(无独显,学原理用)。之前一棒 AI 把 D 盘信息当"误记"用 F 盘覆盖了,错的——两台都真实。详见 PLAN 0️⃣ 区环境条目。
 
 ## 🖥️ GPU 硬件补课(2026-08-16,学生主动发起)
 
@@ -779,7 +779,7 @@ for want in chain:
 2. 别把 codegen 表和运行时 dispatch 表混成一个讲——两种表用途不同
 3. 别说"派 B 没 dispatch table"——有 codegen 表,只是没运行时 dispatch 表
 4. 调研 agent 别派子 agent 太多(撑爆 100万 token)
-5. 环境别误记——实际是 F:/study/big_model/nanoGPT_venv(Python3.14+torch2.11+cu128+RTX5080 有独显),不是 D盘 cpu 无独显
+5. **两台机器并存,别搞混**:F 盘台式(RTX 5080 有独显,主力,代码仓库在这)+ D 盘另一台(无独显,学原理用)。之前一棒把 D 盘当"误记"用 F 盘覆盖了,错的——两台都真实。接手先确认学生在哪台(看当前 venv 路径或问)
 
 **下一步待学生定**:GPU 补课进行中(刚讲完内存布局),下一题学生发问。可能:① 继续 GPU(warp/SIMT/同步)② 回 M8.6 路线 B 对照真 inductor ③ 别的。M8 SFT step3 仍搁置。
 
