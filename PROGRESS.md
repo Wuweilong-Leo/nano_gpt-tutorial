@@ -6,11 +6,12 @@
 ## 📍 当前位置
 
 - **已完成**：第 1-7 课（基础）+ 第 9-11 课（KQV/Embedding/Block/完整 GPT/训练生成）= 里程碑 M0-M5
-- **进行中**：M8 SFT(主线,M8 Lesson2 step3 卡在"切割线定位函数",暂时搁置)；
-  **M8.6 手写迷你编译器支线**(①②③④ ✅ 过关;⑤ 路线 B 已定,`lower_c.py` 已写完跑通,下一步对照真 inductor 的 Triton)
-- **下次上课**：**M8.6 ⑤ 路线 B 收尾**——`lower_c.py` 已 emit 出两份 C 代码(原始 8 节点 3 循环 vs 融合 3 节点 2 循环,看到融合省循环)。
-  下一步:学生跑 `torch.compile` 让真 inductor 生成 Triton 内核,和迷你版 C 代码并排对照,直击"看懂大模型怎么转内核"。
-  **详见 PLAN §7️⃣ 末尾「⚠️ 接力交接」**。
+- **进行中**：M8 SFT(主线,step3 切割线函数搁置);
+  **infra 主线切 AIInfraGuide**(`F:/study/AIInfraGuide/`)——GPU 硬件补课中(消化阶段);
+  M8.6 编译器①②③④✅,⑤路线B暂停(先补 CUDA 再回编译器)
+- **下次上课**:**GPU 硬件消化 + 下一步待学生发问**。学生选"先消化 GPU,不急着加新课"。
+  可能方向:① 继续补 GPU(warp/SIMT/同步,模块二 2.1-2.4)② GPU 小实验验证 ③ 转 CUDA 编程实战(模块二 1.1 起)。
+  **infra 主线已切 AIInfraGuide**(2026-08-16 学生拍板混合制):infra 走 AIInfraGuide,SFT/agent 留原 PLAN。详见 PLAN §2️⃣「infra 主线对接 AIInfraGuide」表。
 
 ## 📊 进度仪表盘
 

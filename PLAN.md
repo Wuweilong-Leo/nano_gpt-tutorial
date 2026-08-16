@@ -14,8 +14,13 @@
   - **① F 盘台式(有独显,主力)**:`F:\study\big_model\nanoGPT_venv`(Python 3.14.3 + torch 2.11.0+cu128 + transformers 5.14 + cuda 可用)。**RTX 5080(Blackwell sm_120,16GB)**→ M8 SFT 真训练能跑。跑脚本:`F:/study/big_model/nanoGPT_venv/Scripts/python.exe xxx.py`。代码仓库 `F:/study/big_model/my_gpt/` 在这台。
   - **② D 盘另一台(无独显,学原理用)**:`D:\ai\nanoGPT_venv`(Python 3.11.9 + torch 2.13.0+cpu + transformers 5.15 + tiktoken/numpy/tqdm/requests)。**无 NVIDIA 独显**(仅 Intel 核显)→ M0-M7/M8.5/M8.6 能跑,M8 SFT 真训练跑不动。跑脚本:`PYTHONUTF8=1 /d/ai/nanoGPT_venv/Scripts/python.exe xxx.py`。自检:`verify_env.py`。
   - ⚠️ 之前一棒 AI 把 D 盘信息当"误记"用 F 盘覆盖了——**错的,两台都是真实环境,并存**。接手前先确认学生在哪台机器(看当前 venv 路径或问学生)。
-- **当前进行中**:**GPU 硬件补课**(学生主动发起,从 AIInfraGuide 仓库 `F:/study/AIInfraGuide/` 学)。已讲透:CPU vs GPU、SM/Tensor Core/CUDA Core 层次(5080=84 SM×4 Tensor Core×128 CUDA Core)、显存金字塔(HBM→L2→共享内存→寄存器)、Roofline/Memory Wall、wmma 指令(load→mma→store)、block/grid/thread/warp 调度、内存行主序布局。**M8.6 第⑤步路线 B 暂停**(lower_c.py 已写完跑通,待对照真 inductor Triton)。
-- **学生当前卡在(下节课接着的)**:GPU 硬件补课进行中,下一题待学生发问(刚学完内存布局行主序)。可能方向:① 继续 GPU(warp/SIMT/同步深入)② 回 M8.6 路线 B 对照真 inductor ③ 别的。M8 SFT step3 切割线函数仍暂停搁置。
+- **当前进行中**:**GPU 硬件补课 · 消化阶段**(学生选"先消化 GPU,不急着加新课")。已讲透:CPU vs GPU、SM/Tensor Core/CUDA Core 层次(5080=84 SM×4 Tensor Core×128 CUDA Core)、显存金字塔(HBM→L2→共享内存→寄存器)、Roofline/Memory Wall、wmma 指令(load→mma→store)、block/grid/thread/warp 调度、内存行主序布局。素材来自 AIInfraGuide `docs/guides/模块一-前置知识/gpu/gpu-basics.md`。
+- **学生当前卡在(下节课接着的)**:GPU 知识刚学完一轮,学生在消化。下一步等学生发问——可能方向:① 继续补 GPU(warp/SIMT/同步,模块二 2.1-2.4)② 做 GPU 小实验验证消化 ③ 转 CUDA 编程实战(模块二 1.1 起)。**M8.6 编译器路线 B 暂停**(学生定:先补 CUDA 再回编译器,因不懂 CUDA 看不懂 Triton 内核)。M8 SFT step3 仍搁置。
+- **📚 学习路线对接 AIInfraGuide(2026-08-16 学生拍板,混合制)**:
+  - **infra 主线走 AIInfraGuide**(`F:/study/AIInfraGuide/`,261 篇文档站):GPU 硬件(模块一第5章)→ CUDA 编程(模块二,1.1-8)→ 编译器(模块二第7章,接 M8.6 路线 B)→ 分布式(模块三,对应原 M12)→ 推理优化(模块四,对应原 M10/M11)
+  - **SFT/agent 留原 PLAN**:M8 SFT(step3 切割线)、M9 LoRA、M13-15 agent 不走 AIInfraGuide(它没这些)
+  - **M8.6 编译器**:先补 CUDA(模块二 1-2 章)→ 再回路线 B 对照真 inductor Triton(学生明确顺序)
+  - 原 PLAN 的 M6/M8.5/M10/M11/M12 infra 部分**作废**,改用 AIInfraGuide 对应章节;原 PLAN 的 M0-M5/M7/M8/M9/M13-15 保留
 - **教学规则(学生明确要求的,违反会被纠正)**:
   1. 代码**学生自己写**,老师只给骨架/hint/解释,绝不代写完整可运行代码
   2. 语法/API 细节直接给答案,不猜谜("这种语法问题可以直接告诉我")
@@ -73,16 +78,28 @@ M8.6 收尾后回来续。概念已讲完(assistant 头 [151644,77091,198] 定�
 | M0-M5 | 基础+手写 GPT | ✅ 完成 | 2026-08-02~08-05 |
 | M6 | 采样+评估+训练工程 | ✅ 完成(+0.5 infra 眼镜已补) | 2026-08-09 收官 |
 | M7 | BPE+中文 token 对比 | ✅ 完成 | 2026-08-09 收官 |
-| **M8** | **SFT 指令微调** | 🔄 **进行中** | Qwen3-0.6B + Alpaca-zh |
-| M8.5 | 大模型端到端执行流(文件→logits 七站) | 📋 方案定稿待教 | 见 §7️⃣;M8 step3 后再开 |
-| M8.6 | 手写迷你 AI 编译器(影子版) | 🔄 **进行中**(①②③✅ ④融合pass骨架跑通8→3,待填2 TODO) | 见 §7️⃣;代码在 `mini_compiler/`(已推 git) |
-| M9 | LoRA | ⬜ 待学 | |
-| M10 | 推理加速(KV cache/连续batching/PagedAttention) | ⬜ 待学 | 素材:msmodeling |
-| M11 | 量化 + 架构进阶(RoPE 深讲,MoE/MLA/MTP 扫盲) | ⬜ 待学 | 素材:msmodeling |
-| M12 | 分布式(理论+手算为主) | ⬜ 待学 | 素材:msmodeling |
-| M13-M15 | agent(四零件/ReAct/RAG/框架) | ⬜ 待学 | 毕业项目 |
+| **M8** | **SFT 指令微调** | 🔄 **进行中**(搁置) | Qwen3-0.6B + Alpaca-zh;step3 切割线函数卡住 |
+| M8.5 | 大模型端到端执行流(文件→logits 七站) | ✅ 前传完成 | 见 §7️⃣;已跑通 dynamo 96 节点 + 融合 96→84 |
+| M8.6 | 手写迷你 AI 编译器(影子版) | 🔄 ①②③④✅ ⑤路线B暂停 | lower_c.py 跑通;**先补 CUDA 再回编译器对照真 inductor**(学生定) |
+| M9 | LoRA | ⬜ 待学 | 不走 AIInfraGuide |
+| **infra 主线** | **GPU+CUDA+编译器+分布式+推理** | 🔄 **走 AIInfraGuide** | 见下表;原 M10/M11/M12 infra 部分作废 |
+| M13-M15 | agent(四零件/ReAct/RAG/框架) | ⬜ 待学 | 毕业项目;不走 AIInfraGuide |
 
-总进度:**5/15 完成(33%)**,三条目标线 A大模型/B agent/C infra 同步推进。
+### 📚 infra 主线对接 AIInfraGuide(2026-08-16 起,替代原 M10/M11/M12 infra)
+
+| 阶段 | AIInfraGuide 章节 | 对应原 PLAN | 状态 |
+|---|---|---|---|
+| GPU 硬件 | 模块一第5章 gpu-basics.md | (原 PLAN 没系统讲) | 🔄 消化中 |
+| CUDA 编程 | 模块二 1.1-2.4(环境/编程模型/内存/Warp/同步) | (原 PLAN 没讲) | ⬜ 下一步 |
+| CUDA 算子 | 模块二 3.1-6.2(Reduce/GEMM/Softmax/FlashAttn) | (原 PLAN 没讲) | ⬜ 待学 |
+| AI 编译器 | 模块二第7章 | M8.6 路线 B 对照真 inductor | ⬜ 补完 CUDA 后回 |
+| 分布式训练 | 模块三(11 章:通信原语/数据并行/ZeRO/TP/PP/MoE/3D) | 原 M12 | ⬜ 待学 |
+| 推理优化 | 模块四(11 章:LLM推理/vLLM/量化/SpecDec/PD解耦) | 原 M10/M11 | ⬜ 待学 |
+| 面经 | docs/interview/(几十家公司真题) | (原 PLAN 没有专门面经) | ⬜ 面试前刷 |
+
+**素材库**:`F:/study/AIInfraGuide/`(本地 clone,github.com/caomaolufei/AIInfraGuide)。原 msmodeling 素材库仍保留作"仿真教具"(M8.5 ⑥ runtime 调度用)。
+
+总进度:**5/15 原里程碑完成(33%)**,infra 主线切 AIInfraGuide 重新铺。三条目标线 A大模型/B agent/C infra 同步推进。
 
 ---
 
